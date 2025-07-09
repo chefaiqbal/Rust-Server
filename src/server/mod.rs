@@ -1,10 +1,12 @@
 use crate::config::{Config, ServerConfig};
-use crate::http::{HttpRequest, HttpResponse};
+use crate::http::{HttpRequest, HttpResponse, StatusCode};
+use crate::static_handler::StaticFileHandler;
 use crate::utils::epoll::EpollManager;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream, SocketAddr};
 use std::os::unix::io::{AsRawFd, RawFd};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 pub struct WebServer {
@@ -307,22 +309,32 @@ impl WebServer {
                     return HttpResponse::method_not_allowed();
                 }
                 
-                // Handle redirect
-                if let Some(ref redirect) = route.redirect {
-                    return HttpResponse::redirect(redirect);
+                // Use static file handler for this route
+                let static_handler = StaticFileHandler::new(server_config);
+                let response = static_handler.handle_request(&request, server_config);
+                
+                // If we got a 404 and there's a custom error page for it, try to serve that
+                if response.status == StatusCode::NotFound {
+                    if let Some(error_page) = server_config.error_pages.get(&404) {
+                        let error_path = PathBuf::from(error_page);
+                        if let Ok(metadata) = std::fs::metadata(&error_path) {
+                            if !metadata.is_dir() {
+                                if let Ok(content) = std::fs::read(&error_path) {
+                                    let mut custom_response = HttpResponse::new(StatusCode::NotFound);
+                                    custom_response.set_body(&content);
+                                    custom_response.set_header("content-type", "text/html");
+                                    return custom_response;
+                                }
+                            }
+                        }
+                    }
                 }
                 
-                // For now, return a simple response
-                let mut response = HttpResponse::ok();
-                response.set_body_string(&format!(
-                    "<html><body><h1>Hello from webserv!</h1><p>Path: {}</p></body></html>",
-                    request.uri
-                ));
-                response.set_header("content-type", "text/html");
                 return response;
             }
         }
         
+        // No matching route found
         HttpResponse::not_found()
     }
 
@@ -346,7 +358,7 @@ impl WebServer {
         }
         
         for fd in to_remove {
-            println!("Closing timed out connection: {}", fd);
+            println!("Client {} timed out", fd);
             self.close_client_connection(fd);
         }
     }

@@ -17,6 +17,21 @@ pub struct ServerConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct ServerLocation {
+    pub path: String,
+    pub root: Option<String>,
+    pub alias: Option<String>,
+    pub index: Option<Vec<String>>,
+    pub autoindex: Option<bool>,
+    pub allow_methods: Option<Vec<String>>,
+    pub error_page: Option<HashMap<u16, String>>,
+    pub client_max_body_size: Option<usize>,
+    pub cgi_pass: Option<String>,
+    pub cgi_extension: Option<String>,
+    pub upload_store: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct RouteConfig {
     pub path: String,
     pub methods: Vec<String>,
