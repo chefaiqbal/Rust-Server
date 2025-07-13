@@ -32,14 +32,14 @@
     - [ ] Implement and test chunked transfer encoding for both incoming requests and outgoing responses (HTTP/1.1 requirement)
     - [ ] Handle unchunked (Content-Length) requests as well
 6. **Proper HTTP Status Codes**
-    - [ ] Make sure every error and success path sets the correct status code (e.g., 405 for method not allowed, 413 for payload too large, etc.)
+    - [x] Make sure every error and success path sets the correct status code (e.g., 405 for method not allowed, 413 for payload too large, etc.)
 7. **Handle Cookies and Sessions**
     - [x] Implement cookie parsing and setting in responses
     - [x] Implement basic session management, with a session ID cookie and in-memory map
 8. **Default Error Pages for All Required Codes**
-    - [ ] Ensure you have custom error pages for:
+    - [x] Ensure you have custom error pages for:
         - 400, 403, 404, 405, 413, 500
-    - [ ] Place them in ./www/ and reference them in your config
+    - [x] Place them in ./www/ and reference them in your config
 9. **CGI: PATH_INFO and Environment**
     - [ ] Make sure CGI scripts receive correct environment variables, especially PATH_INFO
     - [ ] CGI script should run in the correct working directory
