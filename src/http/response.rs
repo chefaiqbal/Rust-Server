@@ -1,6 +1,7 @@
 use super::{Headers, HttpVersion, StatusCode};
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::fs;
 
 #[derive(Debug, Clone)]
 pub struct HttpResponse {

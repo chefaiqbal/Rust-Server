@@ -294,9 +294,14 @@ impl StaticFileHandler {
                 response.set_body(&content);
                 response
             }
-            Err(_) => {
-                debug!("Failed to read file: {}", path.display());
-                HttpResponse::not_found()
+            Err(e) => {
+                use std::io::ErrorKind;
+                debug!("Failed to read file: {}: {}", path.display(), e);
+                if e.kind() == ErrorKind::PermissionDenied {
+                    HttpResponse::forbidden()
+                } else {
+                    HttpResponse::not_found()
+                }
             }
         }
     }
