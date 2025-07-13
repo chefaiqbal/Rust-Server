@@ -50,7 +50,19 @@ impl HttpResponse {
         response
     }
 
-    pub fn method_not_allowed() -> Self {
+    pub fn method_not_allowed_custom(error_page: Option<&str>) -> Self {
+        if let Some(path) = error_page {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                if !metadata.is_dir() {
+                    if let Ok(content) = std::fs::read(path) {
+                        let mut custom_response = Self::new(StatusCode::MethodNotAllowed);
+                        custom_response.set_body(&content);
+                        custom_response.set_header("content-type", "text/html");
+                        return custom_response;
+                    }
+                }
+            }
+        }
         let mut response = Self::new(StatusCode::MethodNotAllowed);
         response.set_body(b"<html><body><h1>405 Method Not Allowed</h1></body></html>");
         response.set_header("content-type", "text/html");

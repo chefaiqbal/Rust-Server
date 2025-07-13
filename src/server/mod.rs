@@ -328,7 +328,8 @@ impl WebServer {
             if Self::matches_route(&request.uri, &route.path) {
                 // Check if method is allowed
                 if !route.methods.contains(&request.method.to_string()) {
-                    let mut resp = HttpResponse::method_not_allowed();
+                    let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
+                    let mut resp = HttpResponse::method_not_allowed_custom(error_page);
                     if set_cookie_needed {
                         resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
                     }

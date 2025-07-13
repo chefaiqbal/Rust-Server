@@ -58,7 +58,8 @@ impl StaticFileHandler {
         // Check if the method is allowed for this location
         if !location.methods.is_empty() {
             if !location.methods.iter().any(|m| m == &request.method.to_string()) {
-                return HttpResponse::method_not_allowed();
+                let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
+return HttpResponse::method_not_allowed_custom(error_page);
             }
         }
 
@@ -124,7 +125,8 @@ impl StaticFileHandler {
 
         // Only handle GET and HEAD methods for static files
         if request.method != HttpMethod::GET && request.method != HttpMethod::HEAD {
-            return HttpResponse::method_not_allowed();
+            let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
+return HttpResponse::method_not_allowed_custom(error_page);
         }
 
         // Build the full filesystem path
