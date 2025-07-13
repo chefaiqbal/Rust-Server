@@ -37,6 +37,35 @@ impl std::fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 impl HttpRequest {
+    /// Decode chunked transfer encoding body into a contiguous Vec<u8>
+    fn decode_chunked_body(body: &[u8]) -> Result<Vec<u8>, ()> {
+        let mut result = Vec::new();
+        let mut pos = 0;
+        let len = body.len();
+        while pos < len {
+            // Find the next CRLF
+            let line_end = body[pos..].windows(2).position(|w| w == b"\r\n").ok_or(())? + pos;
+            let size_str = std::str::from_utf8(&body[pos..line_end]).map_err(|_| ())?;
+            let size = usize::from_str_radix(size_str.trim(), 16).map_err(|_| ())?;
+            pos = line_end + 2;
+            if size == 0 {
+                // Last chunk
+                break;
+            }
+            if pos + size > len {
+                return Err(());
+            }
+            result.extend_from_slice(&body[pos..pos+size]);
+            pos += size;
+            // Skip CRLF after chunk
+            if body.get(pos..pos+2) == Some(b"\r\n") {
+                pos += 2;
+            } else {
+                return Err(());
+            }
+        }
+        Ok(result)
+    }
     pub fn new() -> Self {
         Self {
             method: HttpMethod::GET,
@@ -82,12 +111,22 @@ impl HttpRequest {
         // Parse cookies
         let cookies = Self::parse_cookies(&headers);
 
+        // If chunked, decode body accordingly
+        let body = if headers.get("transfer-encoding").map(|v| v.to_lowercase().contains("chunked")).unwrap_or(false) {
+            match Self::decode_chunked_body(body_part) {
+                Ok(decoded) => decoded,
+                Err(_) => return Err(ParseError::InvalidHeader),
+            }
+        } else {
+            body_part.to_vec()
+        };
+
         Ok(HttpRequest {
             method,
             uri: path,
             version,
             headers,
-            body: body_part.to_vec(),
+            body,
             query_params,
             cookies,
         })

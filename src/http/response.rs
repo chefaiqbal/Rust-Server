@@ -101,7 +101,13 @@ impl HttpResponse {
 
     pub fn set_body(&mut self, body: &[u8]) {
         self.body = body.to_vec();
-        self.set_header("content-length", &self.body.len().to_string());
+        // Only set Content-Length if not chunked
+        let chunked = self.headers.get("transfer-encoding").map(|v| v.to_lowercase().contains("chunked")).unwrap_or(false);
+        if !chunked {
+            self.set_header("content-length", &self.body.len().to_string());
+        } else {
+            self.headers.remove("content-length");
+        }
     }
 
     pub fn set_body_string(&mut self, body: &str) {
@@ -124,24 +130,43 @@ impl HttpResponse {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut response = Vec::new();
-        
         // Status line
         let status_line = format!("{} {}\r\n", self.version, self.status);
         response.extend_from_slice(status_line.as_bytes());
-        
         // Headers
         for (name, value) in &self.headers {
             let header_line = format!("{}: {}\r\n", name, value);
             response.extend_from_slice(header_line.as_bytes());
         }
-        
         // Empty line to separate headers from body
         response.extend_from_slice(b"\r\n");
-        
         // Body
-        response.extend_from_slice(&self.body);
-        
+        let chunked = self.headers.get("transfer-encoding").map(|v| v.to_lowercase().contains("chunked")).unwrap_or(false);
+        if chunked {
+            response.extend_from_slice(&Self::encode_chunked_body(&self.body));
+        } else {
+            response.extend_from_slice(&self.body);
+        }
         response
+    }
+
+    /// Helper to encode a body as chunked transfer encoding
+    fn encode_chunked_body(body: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut pos = 0;
+        let len = body.len();
+        let chunk_size = 4096;
+        while pos < len {
+            let this_chunk = std::cmp::min(chunk_size, len - pos);
+            let size_line = format!("{:X}\r\n", this_chunk);
+            out.extend_from_slice(size_line.as_bytes());
+            out.extend_from_slice(&body[pos..pos + this_chunk]);
+            out.extend_from_slice(b"\r\n");
+            pos += this_chunk;
+        }
+        // Final zero-length chunk
+        out.extend_from_slice(b"0\r\n\r\n");
+        out
     }
 
     fn current_date() -> String {

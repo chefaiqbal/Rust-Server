@@ -42,6 +42,9 @@ impl StaticFileHandler {
         Self { server_root }
     }
 
+    /// Special demo endpoints:
+    ///   - /chunked-demo returns a chunked response
+    ///   - /normal-demo returns a Content-Length response
     pub fn handle_request(&self, request: &HttpRequest, server_config: &ServerConfig) -> HttpResponse {
         use crate::http::HttpMethod;
 
@@ -51,6 +54,33 @@ impl StaticFileHandler {
             Some(path) => path,
             None => return HttpResponse::bad_request(),
         };
+
+        // --- Demo endpoints for chunked vs normal responses ---
+        if path == "/chunked-demo" {
+            let mut resp = HttpResponse::ok();
+            resp.set_header("Content-Type", "text/html");
+            resp.set_header("transfer-encoding", "chunked");
+            let html = r#"
+                <html><body>
+                <h1>Chunked Demo Page</h1>
+                <p>This response is sent with <b>Transfer-Encoding: chunked</b>.</p>
+                </body></html>
+            "#;
+            resp.set_body(html.as_bytes());
+            return resp;
+        }
+        if path == "/normal-demo" {
+            let mut resp = HttpResponse::ok();
+            resp.set_header("Content-Type", "text/html");
+            let html = r#"
+                <html><body>
+                <h1>Normal Demo Page</h1>
+                <p>This response is sent with <b>Content-Length</b>.</p>
+                </body></html>
+            "#;
+            resp.set_body(html.as_bytes());
+            return resp;
+        }
 
         // Find the best matching location block
         let location = self.find_best_location(path, server_config);
