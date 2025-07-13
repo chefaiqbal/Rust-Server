@@ -1,23 +1,60 @@
 # Webserv - HTTP Server Implementation
 
+## ✅ Features Already Implemented
+- [x] Serve static files (GET)
+- [x] Handle POST (including file uploads via multipart/form-data)
+- [x] Basic DELETE support (if present in your handler)
+- [x] Serve on multiple ports (from your config)
+- [x] Custom config file with server/route settings
+- [x] Serve custom error pages for 404 and 500 (other errors may need checking)
+- [x] Non-blocking, single-process, single-thread (from your design)
+- [x] Root directory and route mapping
+- [x] Directory listing (autoindex)
+- [x] CGI support for at least one language (Python)
+- [x] Limit client body size (configurable)
+- [x] Redirection (via config)
+- [x] Compatible with HTTP/1.1 and browsers
+
+## ❗ Features/Requirements Remaining or Needing Verification & Enhancement
+1. **Never Crashes / Robust Error Handling**
+    - [ ] Add error handling for all edge cases (invalid requests, panics, etc.)
+    - [ ] Ensure server never panics or crashes on malformed requests or internal errors
+2. **Request Timeout**
+    - [ ] Implement timeout for all requests (e.g., if a request takes too long, close the connection and return 408 or 504)
+3. **Single epoll (or equivalent) Call Per Client/Server Communication**
+    - [ ] Audit your event loop: ensure only one epoll_wait (or equivalent) per communication step
+4. **All I/O Non-blocking**
+    - [ ] Double-check all file, socket, and CGI I/O is non-blocking and handled via epoll (or equivalent)
+5. **Chunked and Unchunked Requests**
+    - [ ] Implement and test chunked transfer encoding for both incoming requests and outgoing responses (HTTP/1.1 requirement)
+    - [ ] Handle unchunked (Content-Length) requests as well
+6. **Proper HTTP Status Codes**
+    - [ ] Make sure every error and success path sets the correct status code (e.g., 405 for method not allowed, 413 for payload too large, etc.)
+7. **Handle Cookies and Sessions**
+    - [ ] Implement cookie parsing and setting in responses
+    - [ ] (Optional) Implement basic session management, e.g., with a session ID cookie and in-memory map
+8. **Default Error Pages for All Required Codes**
+    - [ ] Ensure you have custom error pages for:
+        - 400, 403, 404, 405, 413, 500
+    - [ ] Place them in ./www/ and reference them in your config
+9. **CGI: PATH_INFO and Environment**
+    - [ ] Make sure CGI scripts receive correct environment variables, especially PATH_INFO
+    - [ ] CGI script should run in the correct working directory
+10. **Configuration File Features**
+    - [ ] All features listed in your requirements should be configurable (host, ports, error pages, client body size, root, methods, redirection, cgi, autoindex, default file, etc.)
+11. **Testing**
+    - [ ] Write and run exhaustive tests:
+        - Static files, uploads, deletes, chunked requests, CGI, redirections, error pages, bad configs, directory listing, etc.
+    - [ ] Use siege or similar to stress test for stability and memory leaks
+12. **Memory Leak Testing**
+    - [ ] Use tools like valgrind or asan to check for memory leaks
+13. **HTTP/1.1 Compliance**
+    - [ ] Ensure persistent connections (keep-alive) work as expected
+    - [ ] Properly parse and respond to all HTTP/1.1 headers
+14. **Documentation**
+    - [ ] Document your config options, endpoints, and any limitations in your README
+
 A high-performance HTTP/1.1 server implementation in Rust, inspired by nginx configuration syntax.
-
-## Features
-
-### Phase 1 (Completed)
-- ✅ Multi-server configuration support
-- ✅ Non-blocking I/O with epoll
-- ✅ HTTP/1.1 request/response parsing
-- ✅ Route-based request handling
-- ✅ Basic error handling
-- ✅ Configuration file parsing (nginx-style)
-
-### Phase 2 (In Progress)
-- ✅ Static file serving with MIME type detection
-- 🔄 Directory listing (autoindex)
-- ✅ Basic CGI script execution
-- 🔄 File upload handling
-- ✅ Custom error page support
 
 ## Configuration
 
