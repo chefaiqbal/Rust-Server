@@ -2,6 +2,8 @@ use crate::config::{Config, ServerConfig};
 use crate::http::{HttpRequest, HttpResponse, StatusCode};
 use crate::static_handler::StaticFileHandler;
 use crate::utils::epoll::EpollManager;
+mod session;
+use session::get_or_create_session_id;
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream, SocketAddr};
@@ -299,81 +301,47 @@ impl WebServer {
     }
         use crate::cgi::{CgiHandler, CgiRequest};
         println!("Handling {} request for {}", request.method, request.uri);
+        
+        // --- SESSION HANDLING LOGIC START ---
+        // Get or create session id from cookie header
+        let cookie_header = request.get_header("cookie");
+        let session_id = get_or_create_session_id(cookie_header);
+        let mut set_cookie_needed = true;
+        if let Some(cookie_header) = cookie_header {
+            if cookie_header.contains(&format!("SESSIONID={}", session_id)) {
+                set_cookie_needed = false;
+            }
+        }
+        // --- SESSION HANDLING LOGIC END ---
 
         // Check if body size exceeds limit
         if request.body.len() > server_config.client_max_body_size {
-            return HttpResponse::payload_too_large();
+            let mut resp = HttpResponse::payload_too_large();
+            if set_cookie_needed {
+                resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+            }
+            return resp;
         }
-
-        // Find matching route (most specific first)
-        let mut routes = server_config.routes.clone();
-        routes.sort_by(|a, b| b.path.len().cmp(&a.path.len()));
-        for route in &routes {
+        
+        // Find matching route
+        for route in &server_config.routes {
             if Self::matches_route(&request.uri, &route.path) {
                 // Check if method is allowed
                 if !route.methods.contains(&request.method.to_string()) {
-                    return HttpResponse::method_not_allowed();
-                }
-
-                // Check for CGI
-                if let (Some(cgi_pass), Some(cgi_ext)) = (&route.cgi_pass, &route.cgi_extension) {
-                    println!("[DEBUG] CGI route config: path={}, cgi_pass={:?}, cgi_ext={:?}, root={:?}", route.path, cgi_pass, cgi_ext, route.root);
-                    println!("[DEBUG] request.uri: {:?}, cgi_ext: {:?}, ends_with: {}", request.uri, cgi_ext, request.uri.ends_with(cgi_ext));
-                    if request.uri.ends_with(cgi_ext) {
-                        println!("[DEBUG] Using CGI handler for URI: {} (route: {})", request.uri, route.path);
-                        // Build script path
-                        let script_root = route.root.as_ref().map(|r| r.clone()).unwrap_or_else(|| ".".to_string());
-                        let mut script_path = std::path::PathBuf::from(&script_root);
-                        if let Some(stripped) = request.uri.strip_prefix(&route.path) {
-                            script_path.push(stripped.trim_start_matches('/'));
-                        }
-
-                        // Build CGI request
-                        let cgi_req = CgiRequest {
-                            script_path: script_path.to_string_lossy().to_string(),
-                            method: request.method.to_string(),
-                            uri: request.uri.clone(),
-                            query_string: request.uri.splitn(2, '?').nth(1).unwrap_or("").to_string(),
-                            headers: request.headers.clone(),
-                            body: request.body.clone(),
-                            remote_addr: "127.0.0.1".to_string(), // TODO: get real remote addr if needed
-                        };
-                        let cgi_handler = CgiHandler::new();
-                        match cgi_handler.execute(cgi_req) {
-                            Ok(cgi_resp) => {
-                                let mut resp = HttpResponse::new(crate::http::StatusCode::from(cgi_resp.status));
-                                for (k, v) in cgi_resp.headers.iter() {
-                                    resp.set_header(k, v);
-                                }
-                                resp.set_body(&cgi_resp.body);
-                                return resp;
-                            }
-                            Err(e) => {
-                                eprintln!("CGI execution error: {}", e);
-                                // Serve custom 500 page if configured
-                                if let Some(error_page) = server_config.error_pages.get(&500) {
-                                    let error_path = PathBuf::from(error_page);
-                                    if let Ok(metadata) = std::fs::metadata(&error_path) {
-                                        if !metadata.is_dir() {
-                                            if let Ok(content) = std::fs::read(&error_path) {
-                                                let mut custom_response = HttpResponse::new(StatusCode::InternalServerError);
-                                                custom_response.set_body(&content);
-                                                custom_response.set_header("content-type", "text/html");
-                                                return custom_response;
-                                            }
-                                        }
-                                    }
-                                }
-                                return HttpResponse::internal_server_error();
-                            }
-                        }
+                    let mut resp = HttpResponse::method_not_allowed();
+                    if set_cookie_needed {
+                        resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
                     }
+                    return resp;
                 }
-
-                // Not CGI, use static file handler
-                println!("[DEBUG] Using StaticFileHandler for URI: {} (route: {})", request.uri, route.path);
+                
+                // Use static file handler for this route
                 let static_handler = StaticFileHandler::new(server_config);
-                let response = static_handler.handle_request(&request, server_config);
+                let mut response = static_handler.handle_request(&request, server_config);
+                if set_cookie_needed {
+                    response.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+                }
+                // If we got a 404 and there's a custom error page for it, try to serve that
                 if response.status == StatusCode::NotFound {
                     if let Some(error_page) = server_config.error_pages.get(&404) {
                         let error_path = PathBuf::from(error_page);
@@ -383,6 +351,9 @@ impl WebServer {
                                     let mut custom_response = HttpResponse::new(StatusCode::NotFound);
                                     custom_response.set_body(&content);
                                     custom_response.set_header("content-type", "text/html");
+                                    if set_cookie_needed {
+                                        custom_response.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+                                    }
                                     return custom_response;
                                 }
                             }
@@ -392,7 +363,13 @@ impl WebServer {
                 return response;
             }
         }
-        HttpResponse::not_found()
+        
+        // No matching route found
+        let mut resp = HttpResponse::not_found();
+        if set_cookie_needed {
+            resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+        }
+        resp
     }
 
     fn matches_route(uri: &str, route_path: &str) -> bool {

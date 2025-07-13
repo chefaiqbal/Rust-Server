@@ -19,8 +19,11 @@
 1. **Never Crashes / Robust Error Handling**
     - [ ] Add error handling for all edge cases (invalid requests, panics, etc.)
     - [ ] Ensure server never panics or crashes on malformed requests or internal errors
-2. **Request Timeout**
-    - [ ] Implement timeout for all requests (e.g., if a request takes too long, close the connection and return 408 or 504)
+2. **Request Timeout** ✅
+    - [x] Implement timeout for all requests (e.g., if a request takes too long, close the connection and return 408 or 504)
+    - [x] Configurable timeout duration per server
+    - [x] Proper HTTP status codes (408 Request Timeout and 504 Gateway Timeout)
+    - [x] Clean connection closure on timeout
 3. **Single epoll (or equivalent) Call Per Client/Server Communication**
     - [ ] Audit your event loop: ensure only one epoll_wait (or equivalent) per communication step
 4. **All I/O Non-blocking**
@@ -137,6 +140,42 @@ curl http://localhost:8080/
 - **Non-blocking**: All I/O operations are non-blocking
 - **Modular**: Clean separation between HTTP parsing, server logic, and configuration
 - **Memory-safe**: Written in Rust for memory safety and performance
+
+## Request Timeout Configuration
+
+The server implements configurable request timeouts to handle slow clients and long-running requests. By default, the timeout is set to 30 seconds.
+
+### Configuration
+
+In your server configuration, you can set the `request_timeout_secs` parameter:
+
+```toml
+[server]
+listen = 8080
+server_name = "localhost"
+request_timeout_secs = 30  # Timeout in seconds
+```
+
+### Behavior
+
+- **408 Request Timeout**: Sent when the client takes too long to send the complete request.
+- **504 Gateway Timeout**: Sent when the server takes too long to process a request.
+- The connection is automatically closed after sending the timeout response.
+
+### Testing Timeouts
+
+You can test the timeout behavior using the provided test script:
+
+```bash
+./test_timeout.sh
+```
+
+Or manually with `curl`:
+
+```bash
+# Test request timeout (408)
+curl -v -X POST http://localhost:8080/slow_request -d "data=test" -H "Content-Type: application/x-www-form-urlencoded" -m 10
+```
 
 ## Testing
 
