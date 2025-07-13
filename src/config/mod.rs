@@ -197,6 +197,11 @@ impl Config {
                 if parts.len() >= 2 {
                     route.cgi_pass = Some(parts[1].trim_end_matches(';').to_string());
                 }
+            },
+            "cgi_extension" => {
+                if parts.len() >= 2 {
+                    route.cgi_extension = Some(parts[1].trim_end_matches(';').to_string());
+                }
             }
             "upload_store" => {
                 if parts.len() >= 2 {
