@@ -34,8 +34,8 @@
 6. **Proper HTTP Status Codes**
     - [ ] Make sure every error and success path sets the correct status code (e.g., 405 for method not allowed, 413 for payload too large, etc.)
 7. **Handle Cookies and Sessions**
-    - [ ] Implement cookie parsing and setting in responses
-    - [ ] (Optional) Implement basic session management, e.g., with a session ID cookie and in-memory map
+    - [x] Implement cookie parsing and setting in responses
+    - [x] Implement basic session management, with a session ID cookie and in-memory map
 8. **Default Error Pages for All Required Codes**
     - [ ] Ensure you have custom error pages for:
         - 400, 403, 404, 405, 413, 500
@@ -120,6 +120,32 @@ server {
     }
 }
 ```
+
+## Cookie and Session Handling
+
+The server supports both cookie parsing/setting and minimal session management:
+
+- **Cookie Parsing:** Incoming requests are parsed for the `Cookie` header; cookies are available in the request handler.
+- **Cookie Setting:** Use the `set_cookie` method in `HttpResponse` to set cookies in responses.
+- **Session Management:**
+    - On each request, the server checks for a `SESSIONID` cookie.
+    - If missing, a new random session ID is generated and stored in a global in-memory session map, and sent as a `Set-Cookie` header.
+    - If present, the session ID is reused.
+    - This demonstrates a minimal session system for educational purposes.
+
+### Testing Cookies and Sessions
+
+You can test cookie and session handling with `curl`:
+
+```sh
+# See Set-Cookie header from the server
+curl -i http://localhost:8080/
+
+# Use the SESSIONID from above to simulate a returning client
+curl -i --cookie "SESSIONID=YOUR_SESSION_ID" http://localhost:8080/
+```
+
+Or use your browser's developer tools to inspect cookies.
 
 ## Usage
 
