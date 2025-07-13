@@ -1,6 +1,8 @@
 use crate::config::{RouteConfig, ServerConfig};
 use crate::http::{HttpRequest, HttpResponse};
 use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use std::env;
@@ -41,10 +43,8 @@ impl StaticFileHandler {
     }
 
     pub fn handle_request(&self, request: &HttpRequest, server_config: &ServerConfig) -> HttpResponse {
-        // Only handle GET and HEAD methods for static files
-        if request.method != crate::http::HttpMethod::GET && request.method != crate::http::HttpMethod::HEAD {
-            return HttpResponse::method_not_allowed();
-        }
+        use crate::http::HttpMethod;
+
 
         // Get the path from the URI, handling query parameters
         let path = match request.uri.split('?').next() {
@@ -54,7 +54,7 @@ impl StaticFileHandler {
 
         // Find the best matching location block
         let location = self.find_best_location(path, server_config);
-        
+
         // Check if the method is allowed for this location
         if !location.methods.is_empty() {
             if !location.methods.iter().any(|m| m == &request.method.to_string()) {
@@ -62,14 +62,77 @@ impl StaticFileHandler {
             }
         }
 
+        // Serve upload form on GET if upload_store is set
+        if request.method == HttpMethod::GET {
+            if let Some(_upload_dir) = &location.upload_store {
+                // Serve a simple HTML upload form
+                let html = format!(r#"
+                    <html><body>
+                    <h1>Upload a file</h1>
+                    <form method="POST" enctype="multipart/form-data" action="{}">
+                        <input type="file" name="file" required />
+                        <button type="submit">Upload</button>
+                    </form>
+                    </body></html>
+                "#, path);
+                let mut resp = HttpResponse::ok();
+                resp.set_header("Content-Type", "text/html");
+                resp.set_body(html.as_bytes());
+                return resp;
+            }
+        }
+
+        // Handle file upload if POST and upload_store is set
+        if request.method == HttpMethod::POST {
+            if let Some(upload_dir) = &location.upload_store {
+                // Only accept multipart/form-data
+                let content_type = request.headers.get("content-type").map(|s| s.as_str()).unwrap_or("");
+                if let Some(boundary) = Self::extract_boundary(content_type) {
+                    match Self::save_multipart_file(&request.body, &boundary, upload_dir) {
+                        Ok(Some(filename)) => {
+                            // Show a link or image preview
+                            let file_url = format!("{}/{}", path.trim_end_matches('/'), filename);
+                            let mut html = String::from("<html><body><h1>Upload successful!</h1>");
+                            if filename.ends_with(".png") || filename.ends_with(".jpg") || filename.ends_with(".jpeg") || filename.ends_with(".gif") {
+                                html.push_str(&format!("<img src='{}' style='max-width:400px;'/><br>", file_url));
+                            }
+                            html.push_str(&format!("<a href='{}'>View uploaded file</a>", file_url));
+                            html.push_str("</body></html>");
+                            let mut resp = HttpResponse::ok();
+                            resp.set_header("Content-Type", "text/html");
+                            resp.set_body(html.as_bytes());
+                            return resp;
+                        }
+                        Ok(None) => {
+                            let mut resp = HttpResponse::bad_request();
+                            resp.set_body(b"No file found in upload");
+                            return resp;
+                        }
+                        Err(e) => {
+                            let mut resp = HttpResponse::internal_server_error();
+                            resp.set_body(format!("Upload error: {}", e).as_bytes());
+                            return resp;
+                        }
+                    }
+                } else {
+                    let mut resp = HttpResponse::bad_request();
+                    resp.set_body(b"Missing or invalid Content-Type: multipart/form-data");
+                    return resp;
+                }
+            }
+        }
+
+        // Only handle GET and HEAD methods for static files
+        if request.method != HttpMethod::GET && request.method != HttpMethod::HEAD {
+            return HttpResponse::method_not_allowed();
+        }
+
         // Build the full filesystem path
         let fs_path = self.resolve_path(path, &location);
-        
         // Security check: Prevent directory traversal
         if !fs_path.starts_with(&self.server_root) {
             return HttpResponse::forbidden();
         }
-
         // Check if the file exists and is accessible
         match fs::metadata(&fs_path) {
             Ok(metadata) => {
@@ -85,6 +148,58 @@ impl StaticFileHandler {
             }
         }
     }
+
+    fn extract_boundary(content_type: &str) -> Option<String> {
+        // Example: Content-Type: multipart/form-data; boundary=----WebKitFormBoundaryePkpFF7tjBAqx29L
+        content_type.split(';')
+            .find_map(|part| {
+                let part = part.trim();
+                if part.starts_with("boundary=") {
+                    Some(part[9..].trim_matches('"').to_string())
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn save_multipart_file(body: &[u8], boundary: &str, upload_dir: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        use std::fs;
+        use std::path::Path;
+        let boundary_marker = format!("--{}", boundary);
+        let body_str = String::from_utf8_lossy(body);
+        let mut filename = None;
+        let mut filedata = None;
+        for part in body_str.split(&boundary_marker) {
+            // Look for Content-Disposition with filename
+            if let Some(disposition) = part.find("Content-Disposition:") {
+                if let Some(fname_start) = part.find("filename=\"") {
+                    let fname_end = part[fname_start+10..].find('"').map(|i| fname_start+10+i).unwrap_or(part.len());
+                    let fname = &part[fname_start+10..fname_end];
+                    if !fname.is_empty() {
+                        filename = Some(fname.to_string());
+                        // Find start of file data (after double CRLF)
+                        if let Some(data_start) = part.find("\r\n\r\n") {
+                            let data = &part[data_start+4..];
+                            // Remove trailing CRLF-- if present
+                            let data = data.trim_end_matches(|c| c == '\r' || c == '\n' || c == '-').as_bytes();
+                            filedata = Some(data.to_vec());
+                        }
+                    }
+                }
+            }
+        }
+        if let (Some(fname), Some(data)) = (filename, filedata) {
+            let dir = Path::new(upload_dir);
+            fs::create_dir_all(dir)?;
+            let save_path = dir.join(&fname);
+            let mut file = File::create(&save_path)?;
+            file.write_all(&data)?;
+            Ok(Some(fname))
+        } else {
+            Ok(None)
+        }
+    }
+
 
     fn find_best_location<'a>(&self, path: &str, server_config: &'a ServerConfig) -> &'a RouteConfig {
         server_config.routes

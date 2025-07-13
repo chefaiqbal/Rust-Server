@@ -152,6 +152,29 @@ chmod +x cgi-bin/your_script.py
 env | sort
 ```
 
+## File Uploads
+
+### Browser Upload Form
+
+If you visit your upload route (e.g. `http://localhost:8080/upload`) in your browser, you will see a file upload form. Select a file and click Upload. After uploading, you will see a confirmation page with a link and preview (for images).
+
+**Sample HTML form served by the server:**
+```html
+<form method="POST" enctype="multipart/form-data" action="/upload">
+    <input type="file" name="file" required />
+    <button type="submit">Upload</button>
+</form>
+```
+
+### Upload with curl
+
+You can also upload files from the command line:
+```sh
+curl -F "file=@yourimage.png" http://localhost:8080/upload
+```
+
+After upload, check the upload directory (as configured by `upload_store`) for your file. The server will respond with an HTML page showing a link and preview if the file is an image.
+
 ## Requirements
 
 - Rust 1.70+

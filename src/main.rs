@@ -13,6 +13,10 @@ use server::WebServer;
 use env_logger;
 
 fn main() {
+    // Ensure uploads directory exists at startup
+    if let Err(e) = std::fs::create_dir_all("./www/uploads") {
+        eprintln!("Failed to create ./www/uploads: {}", e);
+    }
     // Initialize the logger
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Debug)
