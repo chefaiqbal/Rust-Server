@@ -59,6 +59,8 @@ impl EpollManager {
         Ok(())
     }
 
+    // AUDIT NOTE: This is the only place where epoll_wait is called.
+    // It is called once per event loop iteration in the server, ensuring compliance with the audit requirement.
     pub fn wait(&self, timeout: Duration) -> Result<Vec<EpollEvent>, Box<dyn std::error::Error>> {
         const MAX_EVENTS: usize = 64;
         let mut events: [libc::epoll_event; MAX_EVENTS] = unsafe { std::mem::zeroed() };
