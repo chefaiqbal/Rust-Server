@@ -73,19 +73,38 @@ impl CgiHandler {
         // Write request body to stdin if present
         if !request.body.is_empty() {
             if let Some(stdin) = child.stdin.as_mut() {
-                stdin.write_all(&request.body)?;
+                match stdin.write_all(&request.body) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        log::error!("Failed to write to CGI script stdin: {}", e);
+                        return Err(format!("Failed to write to CGI script stdin: {}", e).into());
+                    }
+                }
             }
         }
 
         // Wait for the process to complete (blocking!)
-        let output = child.wait_with_output()?;
+        let output = match child.wait_with_output() {
+            Ok(out) => out,
+            Err(e) => {
+                log::error!("Failed to wait for CGI script output: {}", e);
+                return Err(format!("Failed to wait for CGI script output: {}", e).into());
+            }
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            log::error!("CGI script failed: {}", stderr);
             return Err(format!("CGI script failed: {}", stderr).into());
         }
 
-        self.parse_cgi_output(&output.stdout)
+        match self.parse_cgi_output(&output.stdout) {
+            Ok(resp) => Ok(resp),
+            Err(e) => {
+                log::error!("Failed to parse CGI output: {}", e);
+                Err(e)
+            }
+        }
     }
 
     pub fn start_nonblocking(&self, request: CgiRequest) -> Result<CgiProcess, Box<dyn std::error::Error>> {

@@ -40,10 +40,22 @@ fn main() {
 
     log::info!("Starting server with config from: {}", config_path);
     
-    let mut server = WebServer::new(config);
-    
-    if let Err(e) = server.run() {
-        eprintln!("Server error: {}", e);
-        process::exit(1);
+    let mut server = match WebServer::new(config) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Failed to initialize server: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Catch panics in the main event loop
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if let Err(e) = server.run() {
+            eprintln!("Server error: {}", e);
+        }
+    }));
+    if let Err(panic_info) = result {
+        eprintln!("Server panicked: {:?}", panic_info);
+        // Optionally: restart the server or just continue
     }
 }

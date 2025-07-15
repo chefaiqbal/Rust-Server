@@ -15,7 +15,13 @@ pub struct StaticFileHandler {
 impl StaticFileHandler {
     pub fn new(server_config: &ServerConfig) -> Self {
         // Get the current directory where the server is running from
-        let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let current_dir = match env::current_dir() {
+    Ok(dir) => dir,
+    Err(e) => {
+        log::error!("Failed to get current directory: {}", e);
+        PathBuf::from(".")
+    }
+};
         debug!("Current directory: {:?}", current_dir);
         
         // Default to current directory if no root is specified in the config
@@ -256,7 +262,13 @@ return HttpResponse::method_not_allowed_custom(error_page);
                 debug!("Using absolute path from config: {:?}", path_buf);
             } else {
                 // For relative paths, resolve relative to the current directory, not server_root
-                let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+                let current_dir = match env::current_dir() {
+    Ok(dir) => dir,
+    Err(e) => {
+        log::error!("Failed to get current directory: {}", e);
+        PathBuf::from(".")
+    }
+};
                 path_buf = current_dir.join(root_path);
                 debug!("Resolved relative path: {:?}", path_buf);
             }

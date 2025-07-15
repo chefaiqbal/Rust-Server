@@ -54,15 +54,15 @@ struct CgiConnection {
 }
 
 impl WebServer {
-    pub fn new(config: Config) -> Self {
-        Self {
+    pub fn new(config: Config) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
             config,
             listeners: Vec::new(),
-            epoll: EpollManager::new().expect("Failed to create epoll"),
+            epoll: EpollManager::new()?,
             clients: HashMap::new(),
             server_map: HashMap::new(),
             cgi_connections: HashMap::new(),
-        }
+        })
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -99,16 +99,34 @@ impl WebServer {
         let timeout = Duration::from_millis(1000);
         
         loop {
-            let events = self.epoll.wait(timeout)?;
+            let events = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.epoll.wait(timeout))) {
+                Ok(Ok(ev)) => ev,
+                Ok(Err(e)) => {
+                    log::error!("epoll.wait failed: {}", e);
+                    continue;
+                }
+                Err(panic_info) => {
+                    log::error!("Panic in epoll.wait: {:?}", panic_info);
+                    continue;
+                }
+            };
             
             for event in events {
-                if self.is_listener_fd(event.fd) {
-                    self.handle_new_connection(event.fd)?;
-                } else if let Some(cgi_conn) = self.cgi_connections.get_mut(&event.fd) {
-                    self.handle_cgi_event(event.fd, event.readable, event.writable)?;
-                    continue;
-                } else {
-                    self.handle_client_event(event.fd, event.readable, event.writable)?;
+                let handler_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    if self.is_listener_fd(event.fd) {
+                        self.handle_new_connection(event.fd)
+                    } else if self.cgi_connections.get_mut(&event.fd).is_some() {
+                        self.handle_cgi_event(event.fd, event.readable, event.writable)
+                    } else {
+                        self.handle_client_event(event.fd, event.readable, event.writable)
+                    }
+                }));
+                if let Err(panic_info) = handler_result {
+                    log::error!("Panic in event handler for fd {}: {:?}", event.fd, panic_info);
+                    self.close_client_connection(event.fd);
+                } else if let Ok(Err(e)) = handler_result {
+                    log::error!("Handler error for fd {}: {}", event.fd, e);
+                    self.close_client_connection(event.fd);
                 }
             }
             

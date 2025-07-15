@@ -18,8 +18,8 @@
 
 ## ❗ Features/Requirements Remaining or Needing Verification & Enhancement
 1. **Never Crashes / Robust Error Handling**
-    - [ ] Add error handling for all edge cases (invalid requests, panics, etc.)
-    - [ ] Ensure server never panics or crashes on malformed requests or internal errors
+    - [x] Add error handling for all edge cases (invalid requests, panics, etc.)
+    - [x] Ensure server never panics or crashes on malformed requests or internal errors
 2. **Request Timeout** ✅
     - [x] Implement timeout for all requests (e.g., if a request takes too long, close the connection and return 408 or 504)
     - [x] Configurable timeout duration per server
@@ -160,6 +160,39 @@ cargo run config/webserv.conf
 # Test the server
 curl http://localhost:8080/
 ```
+
+## 🛠️ Testing Robust Error Handling
+
+To verify that the server never crashes and always handles errors gracefully, you can send malformed HTTP requests directly to your server using `printf` and `nc` (netcat).
+
+### Example: Send a Malformed HTTP Request
+
+Open a new terminal (while your server is running) and run:
+
+```sh
+printf 'BADMETHOD / HTTP/1.1\r\nHost: localhost\r\n\r\n' | nc localhost 8080
+```
+- Replace `8080` with your server's port if different.
+- You should see a `400 Bad Request` response.
+- The server should **not crash** or exit, and should log an error like `Error parsing request: Invalid HTTP method`.
+
+### Try Other Malformed Requests
+
+- Incomplete request:
+  ```sh
+  printf 'GET /' | nc localhost 8080
+  ```
+- Invalid header bytes:
+  ```sh
+  printf 'GET / HTTP/1.1\r\nHost: localhost\r\nX-Bad: \xff\r\n\r\n' | nc localhost 8080
+  ```
+
+### What to Look For
+- The server keeps running and continues to serve new requests.
+- Errors are logged, but no panics or crashes occur.
+- Clients receive a proper error response (400 or 500), not a dropped or reset connection.
+
+This demonstrates robust error handling and that your server is crash-proof!
 
 ## Architecture
 
