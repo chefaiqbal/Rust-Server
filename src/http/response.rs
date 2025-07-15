@@ -193,6 +193,15 @@ impl HttpResponse {
             _ => "application/octet-stream",
         }
     }
+
+    pub fn from_cgi_response(resp: crate::cgi::CgiResponse) -> Self {
+        let mut response = HttpResponse::new(StatusCode::from(resp.status));
+        for (k, v) in resp.headers {
+            response.set_header(&k, &v);
+        }
+        response.set_body(&resp.body);
+        response
+    }
 }
 
 impl Default for HttpResponse {

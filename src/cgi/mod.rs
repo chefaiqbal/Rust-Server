@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::io::Write;
 use std::path::Path;
+use std::os::unix::io::{AsRawFd, RawFd};
+use libc::{fcntl, F_SETFL, O_NONBLOCK};
 
 pub struct CgiHandler {
     pub timeout_seconds: u64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CgiRequest {
     pub script_path: String,
     pub method: String,
@@ -23,6 +25,14 @@ pub struct CgiResponse {
     pub status: u16,
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
+}
+
+#[derive(Debug)]
+pub struct CgiProcess {
+    pub child: std::process::Child,
+    pub stdin_fd: Option<RawFd>,
+    pub stdout_fd: Option<RawFd>,
+    pub stderr_fd: Option<RawFd>,
 }
 
 impl CgiHandler {
@@ -46,6 +56,20 @@ impl CgiHandler {
             .stderr(Stdio::piped())
             .spawn()?;
 
+        // --- NON-BLOCKING CGI I/O SUGGESTION ---
+        // To be fully non-blocking and epoll-compliant:
+        // 1. Set child.stdin, child.stdout, and child.stderr to non-blocking mode using libc::fcntl.
+        //    Example:
+        //    use std::os::unix::io::AsRawFd;
+        //    use libc::{fcntl, F_SETFL, O_NONBLOCK};
+        //    let fd = child.stdout.as_ref().unwrap().as_raw_fd();
+        //    unsafe { fcntl(fd, F_SETFL, O_NONBLOCK); }
+        // 2. Register these fds with your epoll manager.
+        // 3. Integrate CGI I/O into your event loop, reading/writing only when epoll signals readiness.
+        // 4. Avoid wait_with_output (which is blocking); instead, poll for process completion and I/O readiness.
+        //
+        // For now, the following is blocking and should be refactored for full compliance:
+
         // Write request body to stdin if present
         if !request.body.is_empty() {
             if let Some(stdin) = child.stdin.as_mut() {
@@ -53,7 +77,7 @@ impl CgiHandler {
             }
         }
 
-        // Wait for the process to complete
+        // Wait for the process to complete (blocking!)
         let output = child.wait_with_output()?;
 
         if !output.status.success() {
@@ -62,6 +86,41 @@ impl CgiHandler {
         }
 
         self.parse_cgi_output(&output.stdout)
+    }
+
+    pub fn start_nonblocking(&self, request: CgiRequest) -> Result<CgiProcess, Box<dyn std::error::Error>> {
+        if !Path::new(&request.script_path).exists() {
+            return Err("CGI script not found".into());
+        }
+
+        let env_vars = self.build_environment(&request);
+        let mut child = Command::new(&request.script_path)
+            .envs(&env_vars)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+
+        // Set pipes to non-blocking
+        let stdin_fd = child.stdin.as_ref().map(|s| s.as_raw_fd());
+        let stdout_fd = child.stdout.as_ref().map(|s| s.as_raw_fd());
+        let stderr_fd = child.stderr.as_ref().map(|s| s.as_raw_fd());
+        if let Some(fd) = stdin_fd {
+            unsafe { fcntl(fd, F_SETFL, O_NONBLOCK); }
+        }
+        if let Some(fd) = stdout_fd {
+            unsafe { fcntl(fd, F_SETFL, O_NONBLOCK); }
+        }
+        if let Some(fd) = stderr_fd {
+            unsafe { fcntl(fd, F_SETFL, O_NONBLOCK); }
+        }
+
+        Ok(CgiProcess {
+            child,
+            stdin_fd,
+            stdout_fd,
+            stderr_fd,
+        })
     }
 
     fn build_environment(&self, request: &CgiRequest) -> HashMap<String, String> {
@@ -91,7 +150,7 @@ impl CgiHandler {
         env
     }
 
-    fn parse_cgi_output(&self, output: &[u8]) -> Result<CgiResponse, Box<dyn std::error::Error>> {
+    pub fn parse_cgi_output(&self, output: &[u8]) -> Result<CgiResponse, Box<dyn std::error::Error>> {
         let output_str = String::from_utf8_lossy(output);
         
         // Find the separator between headers and body
