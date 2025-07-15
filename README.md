@@ -30,8 +30,8 @@
 4. **All I/O Non-blocking**
     - [x] Double-check all file, socket, and CGI I/O is non-blocking and handled via epoll (or equivalent)
 5. **Chunked and Unchunked Requests**
-    - [ ] Implement and test chunked transfer encoding for both incoming requests and outgoing responses (HTTP/1.1 requirement)
-    - [ ] Handle unchunked (Content-Length) requests as well
+    - [x] Implement and test chunked transfer encoding for both incoming requests and outgoing responses (HTTP/1.1 requirement)
+    - [x] Handle unchunked (Content-Length) requests as well
 6. **Proper HTTP Status Codes**
     - [x] Make sure every error and success path sets the correct status code (e.g., 405 for method not allowed, 413 for payload too large, etc.)
 7. **Handle Cookies and Sessions**
