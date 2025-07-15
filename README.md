@@ -28,7 +28,7 @@
 3. **Single epoll (or equivalent) Call Per Client/Server Communication** ✅
     - [x] Only one epoll_wait (or equivalent) call per event loop iteration (see Architecture section)
 4. **All I/O Non-blocking**
-    - [ ] Double-check all file, socket, and CGI I/O is non-blocking and handled via epoll (or equivalent)
+    - [x] Double-check all file, socket, and CGI I/O is non-blocking and handled via epoll (or equivalent)
 5. **Chunked and Unchunked Requests**
     - [ ] Implement and test chunked transfer encoding for both incoming requests and outgoing responses (HTTP/1.1 requirement)
     - [ ] Handle unchunked (Content-Length) requests as well
