@@ -45,6 +45,19 @@ pub struct RouteConfig {
     pub default_file: Option<String>,
 }
 
+impl RouteConfig {
+    pub fn is_cgi_request(&self, uri: &str) -> bool {
+        if self.cgi_pass.is_some() {
+            if let Some(ext) = &self.cgi_extension {
+                return uri.ends_with(ext);
+            }
+            // If cgi_pass is set but no extension, any request to this route is CGI
+            return true;
+        }
+        false
+    }
+}
+
 impl Config {
     pub fn from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let content = fs::read_to_string(path)?;

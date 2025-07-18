@@ -1,6 +1,7 @@
-use crate::config::{Config, ServerConfig};
+use crate::config::{Config, ServerConfig, RouteConfig};
 use crate::http::{HttpRequest, HttpResponse, StatusCode};
 use crate::static_handler::StaticFileHandler;
+use crate::cgi::{CgiHandler, CgiRequest, CgiProcess};
 use crate::utils::epoll::EpollManager;
 mod session;
 use session::get_or_create_session_id;
@@ -10,7 +11,6 @@ use std::net::{TcpListener, TcpStream, SocketAddr};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
-use crate::cgi::{CgiHandler, CgiRequest, CgiProcess};
 
 pub struct WebServer {
     config: Config,
@@ -63,6 +63,37 @@ impl WebServer {
             server_map: HashMap::new(),
             cgi_connections: HashMap::new(),
         })
+    }
+
+    fn find_route_config<'a>(&self, server_config: &'a ServerConfig, path: &str) -> Option<&'a crate::config::RouteConfig> {
+        // Find the most specific matching route
+        server_config.routes.iter()
+            .filter(|r| path.starts_with(&r.path))
+            .max_by_key(|r| r.path.len())
+    }
+
+    fn find_route_for_request<'a>(
+        &self,
+        request: &HttpRequest,
+        server_config: &'a ServerConfig,
+    ) -> Option<&'a RouteConfig> {
+        server_config
+            .routes
+            .iter()
+            .filter(|route| request.uri.starts_with(&route.path))
+            .max_by_key(|route| route.path.len())
+    }
+
+    fn handle_not_found(&self, server_config: &ServerConfig) -> HttpResponse {
+        if let Some(error_page_path) = server_config.error_pages.get(&404) {
+            if let Ok(content) = std::fs::read(error_page_path) {
+                let mut response = HttpResponse::new(StatusCode::NotFound);
+                response.set_body(&content);
+                response.set_header("Content-Type", "text/html");
+                return response;
+            }
+        }
+        HttpResponse::not_found()
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -315,30 +346,94 @@ impl WebServer {
             (request_data, client.server_config_index)
         };
         
-        let response = match HttpRequest::parse(&request_data) {
+        match HttpRequest::parse(&request_data) {
             Ok(request) => {
-                let server_config = &self.config.servers[server_config_index];
-                Self::handle_request(request, server_config)
+                self.handle_request_wrapper(fd, request, server_config_index)?;
             }
             Err(e) => {
                 eprintln!("Error parsing request: {}", e);
-                HttpResponse::bad_request()
+                let response = HttpResponse::bad_request();
+                let client = self.clients.get_mut(&fd).ok_or("Client not found")?;
+                client.response_buffer = response.to_bytes();
+                client.state = ConnectionState::Writing;
             }
         };
-        
-        // Now we can borrow mutably again
-        let client = self.clients.get_mut(&fd).ok_or("Client not found")?;
-        client.response_buffer = response.to_bytes();
-        client.state = ConnectionState::Writing;
         
         Ok(())
     }
 
-    fn handle_request(request: HttpRequest, server_config: &ServerConfig) -> HttpResponse {
-    println!("[DEBUG] All route configs:");
-    for route in &server_config.routes {
-        println!("  path: {}, methods: {:?}, root: {:?}, cgi_pass: {:?}, cgi_extension: {:?}", route.path, route.methods, route.root, route.cgi_pass, route.cgi_extension);
+    fn handle_request_wrapper(&mut self, client_fd: RawFd, request: HttpRequest, server_config_index: usize) -> Result<(), Box<dyn std::error::Error>> {
+        let server_config = &self.config.servers[server_config_index];
+        
+        let response = if let Some(route) = self.find_route_for_request(&request, server_config) {
+            if route.is_cgi_request(&request.uri) {
+                println!("Handling as CGI request");
+                match self.create_cgi_request(&request, route) {
+                    Ok(cgi_request) => {
+                        let cgi_handler = CgiHandler::new();
+                        match cgi_handler.execute(cgi_request) {
+                            Ok(cgi_response) => {
+                                HttpResponse::from_cgi_response(cgi_response)
+                            }
+                            Err(e) => {
+                                eprintln!("Error executing CGI: {}", e);
+                                HttpResponse::internal_server_error()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error creating CGI request: {}", e);
+                        HttpResponse::internal_server_error()
+                    }
+                }
+            } else {
+                // Static file handling
+                let static_handler = StaticFileHandler::new(server_config);
+                static_handler.handle_request(&request, server_config)
+            }
+        } else {
+            self.handle_not_found(server_config)
+        };
+
+        if let Some(client) = self.clients.get_mut(&client_fd) {
+            client.response_buffer = response.to_bytes();
+            client.state = ConnectionState::Writing;
+        }
+        
+        Ok(())
     }
+
+    fn create_cgi_request(
+        &self,
+        request: &HttpRequest,
+        route_config: &RouteConfig,
+    ) -> Result<CgiRequest, anyhow::Error> {
+        let root = route_config.root.as_deref().unwrap_or("./");
+
+        // We need to map this to a filesystem path like "./www/cgi-bin/test.py".
+        let script_path = PathBuf::from(root).join(request.uri.trim_start_matches('/'));
+
+        if !script_path.exists() {
+            return Err(anyhow::anyhow!("CGI script not found at: {:?}", script_path));
+        }
+
+        Ok(CgiRequest {
+            script_path: script_path.to_str().unwrap().to_string(),
+            method: request.method.to_string(),
+            uri: request.uri.clone(),
+            query_string: request.query_string.clone().unwrap_or_default(),
+            headers: request.headers.clone(),
+            body: request.body.clone(),
+            remote_addr: "127.0.0.1".to_string(), // Placeholder, could be improved
+            cgi_pass: route_config.cgi_pass.clone(),
+        })
+    }
+
+    fn handle_static_request(request: HttpRequest, server_config: &ServerConfig) -> HttpResponse {
+        println!("[DEBUG] All route configs:");
+        for route in &server_config.routes {
+            println!("  path: {}, methods: {:?}, root: {:?}, cgi_pass: {:?}, cgi_extension: {:?}", route.path, route.methods, route.root, route.cgi_pass, route.cgi_extension);
+        }
         println!("Handling {} request for {}", request.method, request.uri);
         
         // --- SESSION HANDLING LOGIC START ---
@@ -482,97 +577,112 @@ impl WebServer {
             // Handle stdin (write request body)
             if let Some(stdin_fd) = conn.process.stdin_fd {
                 if fd == stdin_fd && writable && !conn.stdin_done {
-                    if let Some(ref mut stdin) = conn.process.child.stdin {
-                        let to_write = &conn.body_to_write[conn.body_written..];
-                        match stdin.write(to_write) {
+                    let body = &conn.body_to_write.clone();
+                    let written = &mut conn.body_written;
+                    if *written < body.len() {
+                        match conn.process.child.stdin.as_mut().unwrap().write(&body[*written..]) {
                             Ok(n) => {
-                                conn.body_written += n;
-                                if conn.body_written == conn.body_to_write.len() {
-                                    conn.stdin_done = true;
-                                    drop(stdin);
-                                    self.epoll.remove_client(stdin_fd)?;
-                                }
+                                *written += n;
                             }
-                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                            Err(_) => {
-                                conn.stdin_done = true;
-                                drop(stdin);
-                                self.epoll.remove_client(stdin_fd)?;
+                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                // Can't write more now, will try again
+                            }
+                            Err(e) => {
+                                log::error!("Error writing to CGI stdin: {}", e);
+                                conn.stdin_done = true; // Stop trying
                             }
                         }
                     }
+                    if *written >= body.len() {
+                        conn.stdin_done = true;
+                        // Close stdin to signal end of input
+                        drop(conn.process.child.stdin.take()); 
+                        fds_to_remove.push(fd);
+                    }
                 }
             }
-            // Handle stdout (read CGI output)
+
+            // Handle stdout (read script output)
             if let Some(stdout_fd) = conn.process.stdout_fd {
                 if fd == stdout_fd && readable && !conn.stdout_done {
-                    if let Some(ref mut stdout) = conn.process.child.stdout {
-                        let mut buf = [0u8; 8192];
-                        match stdout.read(&mut buf) {
-                            Ok(0) => {
-                                conn.stdout_done = true;
-                                drop(stdout);
-                                self.epoll.remove_client(stdout_fd)?;
-                            }
-                            Ok(n) => {
-                                conn.output_buffer.extend_from_slice(&buf[..n]);
-                            }
-                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                            Err(_) => {
-                                conn.stdout_done = true;
-                                drop(stdout);
-                                self.epoll.remove_client(stdout_fd)?;
-                            }
+                    let mut buf = [0; 4096];
+                    match conn.process.child.stdout.as_mut().unwrap().read(&mut buf) {
+                        Ok(0) => {
+                            conn.stdout_done = true;
+                            fds_to_remove.push(fd);
+                        }
+                        Ok(n) => {
+                            conn.output_buffer.extend_from_slice(&buf[..n]);
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            // No more data for now
+                        }
+                        Err(e) => {
+                            log::error!("Error reading from CGI stdout: {}", e);
+                            conn.stdout_done = true; // Stop trying
+                            fds_to_remove.push(fd);
                         }
                     }
                 }
             }
-            // Handle stderr (read CGI error output)
+
+            // Handle stderr (read script error)
             if let Some(stderr_fd) = conn.process.stderr_fd {
                 if fd == stderr_fd && readable && !conn.stderr_done {
-                    if let Some(ref mut stderr) = conn.process.child.stderr {
-                        let mut buf = [0u8; 4096];
-                        match stderr.read(&mut buf) {
-                            Ok(0) => {
-                                conn.stderr_done = true;
-                                drop(stderr);
-                                self.epoll.remove_client(stderr_fd)?;
-                            }
-                            Ok(n) => {
-                                conn.error_buffer.extend_from_slice(&buf[..n]);
-                            }
-                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                            Err(_) => {
-                                conn.stderr_done = true;
-                                drop(stderr);
-                                self.epoll.remove_client(stderr_fd)?;
-                            }
+                    let mut buf = [0; 4096];
+                    match conn.process.child.stderr.as_mut().unwrap().read(&mut buf) {
+                        Ok(0) => {
+                            conn.stderr_done = true;
+                            fds_to_remove.push(fd);
+                        }
+                        Ok(n) => {
+                            conn.error_buffer.extend_from_slice(&buf[..n]);
+                        }
+                        Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            // No more data for now
+                        }
+                        Err(e) => {
+                            log::error!("Error reading from CGI stderr: {}", e);
+                            conn.stderr_done = true; // Stop trying
+                            fds_to_remove.push(fd);
                         }
                     }
                 }
             }
-            // Check if CGI is done
-            if conn.stdin_done && conn.stdout_done && conn.stderr_done {
-                let handler = CgiHandler::new();
-                if let Ok(resp) = handler.parse_cgi_output(&conn.output_buffer) {
-                    if let Some(client) = self.clients.get_mut(&conn.client_fd) {
-                        client.response_buffer = HttpResponse::from_cgi_response(resp).to_bytes();
-                        client.state = ConnectionState::Writing;
-                    }
-                } else if !conn.error_buffer.is_empty() {
-                    let err_msg = String::from_utf8_lossy(&conn.error_buffer);
-                    eprintln!("CGI error: {}", err_msg);
-                }
+
+            // Check if CGI process is finished
+            if conn.stdout_done && conn.stderr_done && !conn.done {
                 conn.done = true;
-                if let Some(fd) = conn.process.stdout_fd { fds_to_remove.push(fd); }
-                if let Some(fd) = conn.process.stderr_fd { fds_to_remove.push(fd); }
-                if let Some(fd) = conn.process.stdin_fd { fds_to_remove.push(fd); }
+                let cgi_handler = CgiHandler::new();
+                let response = if !conn.error_buffer.is_empty() {
+                    log::error!("CGI Error: {}", String::from_utf8_lossy(&conn.error_buffer));
+                    HttpResponse::internal_server_error()
+                } else {
+                    match cgi_handler.parse_cgi_output(&conn.output_buffer) {
+                        Ok(cgi_resp) => HttpResponse::from_cgi_response(cgi_resp),
+                        Err(e) => {
+                            log::error!("Failed to parse CGI output: {}", e);
+                            HttpResponse::internal_server_error()
+                        }
+                    }
+                };
+
+                // Send response to the original client
+                if let Some(client) = self.clients.get_mut(&conn.client_fd) {
+                    client.response_buffer = response.to_bytes();
+                    client.state = ConnectionState::Writing;
+                }
+
+                // Clean up this CGI connection
+                if let Some(process_fd) = conn.process.stdout_fd { fds_to_remove.push(process_fd); }
+                if let Some(process_fd) = conn.process.stderr_fd { fds_to_remove.push(process_fd); }
             }
         }
-        for fd in fds_to_remove {
-            self.epoll.remove_client(fd).ok();
-            self.cgi_connections.remove(&fd);
+        for process_fd in fds_to_remove {
+            self.epoll.remove_client(process_fd)?;
+            self.cgi_connections.remove(&process_fd);
         }
+
         Ok(())
     }
 }

@@ -42,7 +42,7 @@
         - 400, 403, 404, 405, 413, 500
     - [x] Place them in ./www/ and reference them in your config
 9. **CGI: PATH_INFO and Environment**
-    - [ ] Make sure CGI scripts receive correct environment variables, especially PATH_INFO
+    - [x] Make sure CGI scripts receive correct environment variables, especially PATH_INFO
     - [ ] CGI script should run in the correct working directory
 10. **Configuration File Features**
     - [ ] All features listed in your requirements should be configurable (host, ports, error pages, client body size, root, methods, redirection, cgi, autoindex, default file, etc.)
@@ -87,10 +87,35 @@ Basic CGI script execution is supported:
 ```nginx
 location /cgi-bin {
     allow_methods GET POST;
-    root ./cgi-bin;
-    cgi_pass ./python3;  # Path to interpreter
+    root ./www;
+    cgi_extension .py;
+    cgi_pass /usr/bin/python3;  # Absolute path to interpreter is recommended
 }
 ```
+
+#### How CGI Works in This Server
+
+The server interprets Python scripts using the Common Gateway Interface (CGI) protocol. It does not interpret the Python code directly; instead, it acts as a middleman that executes the script and passes data between the client and the script.
+
+Here is a step-by-step breakdown of the process:
+
+1.  **Configuration**: In `config/webserv.conf`, a `location` block for `/cgi-bin` is configured with two special directives:
+    *   `cgi_extension .py`: Tells the server to treat any request URI ending in `.py` within this location as a CGI script.
+    *   `cgi_pass /usr/bin/python3`: Specifies the absolute path to the Python interpreter that will be used to execute the script.
+
+2.  **Request Routing**: When a request arrives (e.g., for `/cgi-bin/test.py`), the `WebServer` matches it to the `/cgi-bin` route. The `handle_request_wrapper` function in `src/server/mod.rs` identifies that the request URI matches the `cgi_extension` and routes it to the CGI handler.
+
+3.  **Process Spawning**: Instead of serving the `.py` file, the server spawns a new process. It uses the value from `cgi_pass` as the command and the full path to the script as its argument. For example:
+    ```sh
+    /usr/bin/python3 /path/to/your/project/www/cgi-bin/test.py
+    ```
+
+4.  **Environment & I/O**: The server prepares a set of CGI environment variables (like `REQUEST_METHOD`, `QUERY_STRING`, `CONTENT_LENGTH`, etc.) from the HTTP request. It then communicates with the script's standard I/O channels:
+    *   The HTTP request body is piped to the Python script's **standard input** (`stdin`).
+    *   The server captures the script's **standard output** (`stdout`) to get the response.
+    *   The server also captures **standard error** (`stderr`) to log any errors from the script.
+
+5.  **Response Handling**: The Python script executes and prints its output to `stdout`. This output must be a valid HTTP response (e.g., `Content-Type: text/html\n\n<h1>Hello</h1>`). The Rust server reads this output, parses it into an `HttpResponse`, and sends it back to the client's browser.
 
 ### Complete Configuration Example
 

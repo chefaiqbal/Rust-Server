@@ -7,6 +7,7 @@ mod http;
 mod cgi;
 mod utils;
 mod static_handler;
+mod upload_handler;
 
 use config::Config;
 use server::WebServer;

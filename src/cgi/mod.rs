@@ -18,6 +18,7 @@ pub struct CgiRequest {
     pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
     pub remote_addr: String,
+    pub cgi_pass: Option<String>,
 }
 
 #[derive(Debug)]
@@ -49,7 +50,15 @@ impl CgiHandler {
 
         let env_vars = self.build_environment(&request);
         
-        let mut child = Command::new(&request.script_path)
+        let mut command = if let Some(interpreter) = &request.cgi_pass {
+            let mut cmd = Command::new(interpreter);
+            cmd.arg(&request.script_path);
+            cmd
+        } else {
+            Command::new(&request.script_path)
+        };
+
+        let mut child = command
             .envs(&env_vars)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -113,7 +122,16 @@ impl CgiHandler {
         }
 
         let env_vars = self.build_environment(&request);
-        let mut child = Command::new(&request.script_path)
+        
+        let mut command = if let Some(interpreter) = &request.cgi_pass {
+            let mut cmd = Command::new(interpreter);
+            cmd.arg(&request.script_path);
+            cmd
+        } else {
+            Command::new(&request.script_path)
+        };
+
+        let mut child = command
             .envs(&env_vars)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

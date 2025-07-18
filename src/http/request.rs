@@ -6,8 +6,9 @@ use std::str::FromStr;
 pub struct HttpRequest {
     pub method: HttpMethod,
     pub uri: String,
+    pub query_string: Option<String>,
     pub version: HttpVersion,
-    pub headers: Headers,
+    pub headers: HashMap<String, String>,
     pub body: Vec<u8>,
     pub query_params: HashMap<String, String>,
     pub cookies: HashMap<String, String>,
@@ -75,6 +76,7 @@ impl HttpRequest {
             body: Vec::new(),
             query_params: HashMap::new(),
             cookies: HashMap::new(),
+            query_string: None,
         }
     }
 
@@ -106,7 +108,8 @@ impl HttpRequest {
         }
 
         // Parse query parameters
-        let (path, query_params) = Self::parse_uri(&uri);
+        let (path, query_string) = Self::parse_uri(&uri);
+        let query_params = query_string.as_deref().map(Self::parse_query_string).unwrap_or_default();
         
         // Parse cookies
         let cookies = Self::parse_cookies(&headers);
@@ -129,6 +132,7 @@ impl HttpRequest {
             body,
             query_params,
             cookies,
+            query_string,
         })
     }
 
@@ -156,27 +160,28 @@ impl HttpRequest {
         }
     }
 
-    fn parse_uri(uri: &str) -> (String, HashMap<String, String>) {
-        let mut query_params = HashMap::new();
-        
-        if let Some(question_pos) = uri.find('?') {
-            let path = uri[..question_pos].to_string();
-            let query_string = &uri[question_pos + 1..];
-            
-            for param in query_string.split('&') {
-                if let Some(eq_pos) = param.find('=') {
-                    let key = Self::url_decode(&param[..eq_pos]);
-                    let value = Self::url_decode(&param[eq_pos + 1..]);
-                    query_params.insert(key, value);
-                } else {
-                    query_params.insert(Self::url_decode(param), String::new());
-                }
-            }
-            
-            (path, query_params)
+    fn parse_uri(uri_str: &str) -> (String, Option<String>) {
+        if let Some(pos) = uri_str.find('?') {
+            let uri = uri_str[..pos].to_string();
+            let query_string = uri_str[pos + 1..].to_string();
+            (uri, Some(query_string))
         } else {
-            (uri.to_string(), query_params)
+            (uri_str.to_string(), None)
         }
+    }
+
+    fn parse_query_string(query_str: &str) -> HashMap<String, String> {
+        let mut params = HashMap::new();
+        for pair in query_str.split('&') {
+            if let Some(pos) = pair.find('=') {
+                let key = Self::url_decode(&pair[..pos]);
+                let value = Self::url_decode(&pair[pos + 1..]);
+                params.insert(key, value);
+            } else {
+                params.insert(Self::url_decode(pair), "".to_string());
+            }
+        }
+        params
     }
 
     fn parse_cookies(headers: &Headers) -> HashMap<String, String> {
