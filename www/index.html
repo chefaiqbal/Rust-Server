@@ -29,7 +29,7 @@
                 <p>Test accepted methods for different routes (DELETE with/without permission).</p>
                 <div class="curl-example">curl -X DELETE http://localhost:8080/ # ✅ DELETE allowed on root</div>
                 <div class="curl-example">curl -X DELETE http://localhost:8080/api # ❌ DELETE forbidden on /api</div>
-                <div class="curl-example">curl -X DELETE http://localhost:8080/uploads # ❌ DELETE forbidden on /uploads</div>
+                <div class="curl-example">curl -X DELETE http://localhost:8080/uploads # ✅ DELETE allowed on /uploads</div>
                 <div class="curl-example">curl -X POST http://localhost:8080/uploads # ❌ POST forbidden on /uploads</div>
             </div>
 
@@ -54,6 +54,14 @@
                 <p>Test working Python CGI script execution.</p>
                 <a href="/cgi-bin/test.py" class="test-link cgi"><span class="method-tag">GET</span>CGI Test Script</a>
                 <div class="curl-example">curl -X POST -d "name=test" http://localhost:8080/cgi-bin/test.py</div>
+            </div>
+
+            <div class="feature-card">
+                <h3>🔄 Chunked vs Unchunked CGI Data</h3>
+                <p>Test CGI with both chunked and unchunked transfer encoding.</p>
+                <a href="/cgi-bin/echo.py" class="test-link cgi"><span class="method-tag">GET</span>CGI Echo Test</a>
+                <div class="curl-example">curl -X POST -d "unchunked=data" http://localhost:8080/cgi-bin/echo.py</div>
+                <div class="curl-example">curl -X POST -H "Transfer-Encoding: chunked" --data-binary "chunked data" http://localhost:8080/cgi-bin/echo.py</div>
             </div>
 
             <div class="feature-card">
@@ -83,6 +91,17 @@
                 <div class="curl-example">printf 'BADMETHOD / HTTP/1.1\r\n\r\n' | nc localhost 8080</div>
                 <div class="curl-example">printf 'GET /' | nc localhost 8080</div>
                 <p><small>Server should return 400 Bad Request and stay running.</small></p>
+            </div>
+        </div>
+
+        <h2>🔄 Redirect Testing</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>URL Redirection</h3>
+                <p>Test HTTP redirection functionality.</p>
+                <a href="/redirect" class="test-link">Test Redirect</a>
+                <div class="curl-example">curl -v http://localhost:8080/redirect # Should return 301 redirect</div>
+                <p><small>Should redirect to homepage with 301 status code.</small></p>
             </div>
         </div>
     </div>
