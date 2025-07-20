@@ -51,9 +51,8 @@ impl StaticFileHandler {
     /// Special demo endpoints:
     ///   - /chunked-demo returns a chunked response
     ///   - /normal-demo returns a Content-Length response
-    pub fn handle_request(&self, request: &HttpRequest, server_config: &ServerConfig) -> HttpResponse {
+    pub fn handle_request(&self, request: &crate::http::HttpRequest, server_config: &crate::config::ServerConfig) -> crate::http::HttpResponse {
         use crate::http::HttpMethod;
-
 
         // Get the path from the URI, handling query parameters
         let path = match request.uri.split('?').next() {
@@ -90,13 +89,41 @@ impl StaticFileHandler {
 
         // Find the best matching location block
         let location = self.find_best_location(path, server_config);
+        
+        debug!("Found location for path '{}': path='{}', methods={:?}", path, location.path, location.methods);
+
+        // CHECK FOR EMPTY METHODS FIRST - This is the key fix for 403 Forbidden
+        if location.methods.is_empty() {
+            debug!("Empty methods for location '{}', returning 403 Forbidden", location.path);
+            
+            // Try to serve custom 403 error page
+            if let Some(error_page_path) = server_config.error_pages.get(&403) {
+                let error_path = if error_page_path.starts_with('/') {
+                    error_page_path.trim_start_matches('/').to_string()
+                } else {
+                    error_page_path.clone()
+                };
+                let full_path = self.server_root.join(&error_path);
+                debug!("Looking for 403 error page at: {:?}", full_path);
+                
+                if let Ok(content) = std::fs::read(&full_path) {
+                    let mut response = HttpResponse::new(crate::http::StatusCode::Forbidden);
+                    response.set_body(&content);
+                    response.set_header("Content-Type", "text/html");
+                    debug!("Serving custom 403 page");
+                    return response;
+                }
+            }
+            
+            // Fallback to default 403 response
+            debug!("No custom 403 page found, using default");
+            return HttpResponse::forbidden();
+        }
 
         // Check if the method is allowed for this location
-        if !location.methods.is_empty() {
-            if !location.methods.iter().any(|m| m == &request.method.to_string()) {
-                let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
-return HttpResponse::method_not_allowed_custom(error_page);
-            }
+        if !location.methods.iter().any(|m| m == &request.method.to_string()) {
+            let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
+            return HttpResponse::method_not_allowed_custom(error_page);
         }
 
         // Serve upload form on GET if upload_store is set
@@ -162,15 +189,17 @@ return HttpResponse::method_not_allowed_custom(error_page);
         // Only handle GET and HEAD methods for static files
         if request.method != HttpMethod::GET && request.method != HttpMethod::HEAD {
             let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
-return HttpResponse::method_not_allowed_custom(error_page);
+            return HttpResponse::method_not_allowed_custom(error_page);
         }
 
-        // Build the full filesystem path
+        // Build the full filesystem path (only after all checks pass)
         let fs_path = self.resolve_path(path, &location);
+        
         // Security check: Prevent directory traversal
         if !fs_path.starts_with(&self.server_root) {
             return HttpResponse::forbidden();
         }
+        
         // Check if the file exists and is accessible
         match fs::metadata(&fs_path) {
             Ok(metadata) => {

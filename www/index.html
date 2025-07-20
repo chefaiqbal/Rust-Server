@@ -62,7 +62,7 @@
                 <h3>HTTP Error Codes</h3>
                 <p>Test custom error pages for various HTTP status codes.</p>
                 <a href="/nonexistent" class="test-link error">404 Not Found</a>
-                <a href="/forbidden-test" class="test-link error">403 Forbidden</a>
+                <a href="/protected/secret.txt" class="test-link error">403 Forbidden</a>
                 <div class="curl-example">curl -X PATCH http://localhost:8080/ # 405 Method Not Allowed</div>
                 <div class="curl-example">curl -X POST -H "Content-Length: 999999999" http://localhost:8080/ # 413 Payload Too Large</div>
             </div>

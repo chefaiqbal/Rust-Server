@@ -387,9 +387,8 @@ impl WebServer {
                     }
                 }
             } else {
-                // Static file handling
-                let static_handler = StaticFileHandler::new(server_config);
-                static_handler.handle_request(&request, server_config)
+                // Use the new static request handler with proper 403 handling
+                Self::handle_static_request(request, server_config)
             }
         } else {
             self.handle_not_found(server_config)
@@ -437,7 +436,6 @@ impl WebServer {
         println!("Handling {} request for {}", request.method, request.uri);
         
         // --- SESSION HANDLING LOGIC START ---
-        // Get or create session id from cookie header
         let cookie_header = request.get_header("cookie");
         let session_id = get_or_create_session_id(cookie_header);
         let mut set_cookie_needed = true;
@@ -460,6 +458,30 @@ impl WebServer {
         // Find matching route
         for route in &server_config.routes {
             if Self::matches_route(&request.uri, &route.path) {
+                
+                // CHECK FOR EMPTY METHODS FIRST - before any file system operations
+                if route.methods.is_empty() {
+                    println!("Empty methods for route {}, returning 403 Forbidden", route.path);
+                    // Try to serve custom 403 error page
+                    if let Some(error_page_path) = server_config.error_pages.get(&403) {
+                        if let Ok(content) = std::fs::read(error_page_path) {
+                            let mut response = HttpResponse::new(StatusCode::Forbidden);
+                            response.set_body(&content);
+                            response.set_header("Content-Type", "text/html");
+                            if set_cookie_needed {
+                                response.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+                            }
+                            return response;
+                        }
+                    }
+                    // Fallback to default 403 response
+                    let mut resp = HttpResponse::forbidden();
+                    if set_cookie_needed {
+                        resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+                    }
+                    return resp;
+                }
+                
                 // Check if method is allowed
                 if !route.methods.contains(&request.method.to_string()) {
                     let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
@@ -476,6 +498,7 @@ impl WebServer {
                 if set_cookie_needed {
                     response.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
                 }
+                
                 // If we got a 404 and there's a custom error page for it, try to serve that
                 if response.status == StatusCode::NotFound {
                     if let Some(error_page) = server_config.error_pages.get(&404) {

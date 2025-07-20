@@ -1,5 +1,15 @@
 # Webserv - HTTP Server Implementation
 
+# Create the protected directory and file
+mkdir -p ./www/protected
+echo "This is a secret file that should be protected." > ./www/protected/secret.txt
+
+# Make the file unreadable (no read permissions for anyone)
+chmod 000 ./www/protected/secret.txt
+
+# Test the 403 Forbidden response
+curl -v http://localhost:8080/protected/secret.txt
+
 ## ✅ Features Already Implemented
 - [x] Serve static files (GET)
 - [x] Handle POST (including file uploads via multipart/form-data)
