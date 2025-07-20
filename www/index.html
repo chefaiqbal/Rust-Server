@@ -63,6 +63,7 @@
                 <p>Test custom error pages for various HTTP status codes.</p>
                 <a href="/nonexistent" class="test-link error">404 Not Found</a>
                 <a href="/protected/secret.txt" class="test-link error">403 Forbidden</a>
+                <a href="/cgi-bin/fail.py" class="test-link error">500 Internal Server Error</a>
                 <div class="curl-example">curl -X PATCH http://localhost:8080/ # 405 Method Not Allowed</div>
                 <div class="curl-example">curl -X POST -H "Content-Length: 999999999" http://localhost:8080/ # 413 Payload Too Large</div>
             </div>
@@ -74,79 +75,6 @@
                 <div class="curl-example">printf 'GET /' | nc localhost 8080</div>
                 <p><small>Server should return 400 Bad Request and stay running.</small></p>
             </div>
-        </div>
-
-        <h2>🍪 Cookies & Sessions</h2>
-        <div class="feature-card">
-            <h3>Session Management</h3>
-            <p>Test cookie setting and session persistence.</p>
-            <div class="curl-example">curl -i http://localhost:8080/ # Check Set-Cookie header</div>
-            <div class="curl-example">curl -H "Cookie: SESSIONID=your_session_id" http://localhost:8080/</div>
-            <p><small>Each request should maintain or create a session ID.</small></p>
-        </div>
-
-        <h2>🔧 Configuration Testing</h2>
-        <div class="audit-note">
-            <strong>📝 For Auditors:</strong> 
-            <ul>
-                <li>Test multiple ports by modifying <code>config/webserv.conf</code></li>
-                <li>Try invalid configurations to test error handling</li>
-                <li>Test route-specific settings (methods, roots, etc.)</li>
-                <li>Verify single epoll call per event loop (check source code)</li>
-                <li>Test with <code>siege -b localhost:8080</code> for stress testing</li>
-            </ul>
-        </div>
-
-        <h2>📊 Performance & Stress Testing</h2>
-        <div class="code-block">
-# Install siege if not available
-sudo apt-get install siege
-
-# Basic stress test
-siege -b -c 10 -t 30s http://localhost:8080/
-
-# File upload stress test
-siege -b -c 5 -t 15s 'http://localhost:8080/upload POST &lt; test_file.txt'
-
-# CGI stress test
-siege -b -c 5 -t 15s http://localhost:8080/cgi-bin/test.py
-        </div>
-
-        <h2>🐛 Development & Debug Info</h2>
-        <div class="feature-card">
-            <h3>Server Information</h3>
-            <p><strong>Server:</strong> Webserv/1.0 (Rust)</p>
-            <p><strong>HTTP Version:</strong> HTTP/1.1</p>
-            <p><strong>Architecture:</strong> Single-process, single-thread, epoll-based</p>
-            <p><strong>Config File:</strong> <code>config/webserv.conf</code></p>
-            <p><strong>Document Root:</strong> <code>./www</code></p>
-            <p><strong>CGI Directory:</strong> <code>./www/cgi-bin</code></p>
-            <p><strong>Upload Directory:</strong> <code>./www/uploads</code></p>
-        </div>
-
-        <div class="audit-note">
-            <strong>🔍 Audit Notes:</strong>
-            <ul>
-                <li>Error pages are served automatically on error conditions (not accessible via direct URLs)</li>
-                <li>All I/O operations are non-blocking and use epoll</li>
-                <li>Server handles malformed requests gracefully without crashing</li>
-                <li>CGI scripts are executed in separate processes with proper environment variables</li>
-                <li>File uploads support multipart/form-data encoding</li>
-                <li>Session management uses secure random session IDs</li>
-            </ul>
-        </div>
-
-        <div class="success-note">
-            <strong>📚 Documentation:</strong> 
-            For complete source code review, check:
-            <ul>
-                <li><code>src/server/mod.rs</code> - Main server logic and event loop</li>
-                <li><code>src/http/</code> - HTTP request/response handling</li>
-                <li><code>src/cgi/mod.rs</code> - CGI execution logic</li>
-                <li><code>src/static_handler.rs</code> - Static file serving</li>
-                <li><code>src/config/mod.rs</code> - Configuration parsing</li>
-                <li><code>audit.md</code> - Detailed audit checklist</li>
-            </ul>
         </div>
     </div>
 </body>
