@@ -455,6 +455,26 @@ impl WebServer {
             return resp;
         }
         
+        // Special case: if the request is GET /redirect, serve www/redirect.html directly
+        if request.uri == "/redirect" && request.method.to_string() == "GET" {
+            let file_path = std::path::Path::new("./www/redirect.html");
+            if file_path.exists() {
+                if let Ok(contents) = std::fs::read(file_path) {
+                    let mut resp = HttpResponse::new(StatusCode::Ok);
+                    resp.set_body(&contents);
+                    resp.set_header("Content-Type", "text/html");
+                    if set_cookie_needed {
+                        resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+                    }
+                    return resp;
+                }
+            }
+            let mut resp = HttpResponse::not_found();
+            if set_cookie_needed {
+                resp.set_cookie("SESSIONID", &session_id, Some(3600), Some("/"));
+            }
+            return resp;
+        }
         // Find matching route
         for route in &server_config.routes {
             if Self::matches_route(&request.uri, &route.path) {
