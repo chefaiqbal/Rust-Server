@@ -373,38 +373,69 @@ return HttpResponse::method_not_allowed_custom(error_page);
         let mut html = String::new();
         
         // Simple HTML header
-        html.push_str("<html><head><title>Directory Listing</title></head><body>");
-        html.push_str("<h1>Directory Listing</h1><ul>");
+        html.push_str("<!DOCTYPE html><html><head><title>Index of ");
+        html.push_str(&path.file_name().unwrap_or_default().to_string_lossy());
+        html.push_str("</title></head><body>");
+        html.push_str("<h1>Index of ");
+        html.push_str(&path.file_name().unwrap_or_default().to_string_lossy());
+        html.push_str("</h1><hr><pre>");
         
         // Add parent directory link if not at root
         if path != &self.server_root {
             if path.parent().is_some() {
-                html.push_str("<li><a href='../'>.. (Parent Directory)</a></li>");
+                html.push_str("<a href='../'>back</a>                             -\n");
             }
         }
         
-        // List directory contents
-        if let Ok(entries) = fs::read_dir(path) {
-            for entry in entries.filter_map(Result::ok) {
+        // Collect and sort directory entries
+        let mut entries = Vec::new();
+        if let Ok(dir_entries) = fs::read_dir(path) {
+            for entry in dir_entries.filter_map(Result::ok) {
                 if let (Ok(metadata), Ok(file_name)) = (entry.metadata(), entry.file_name().into_string()) {
                     // Skip hidden files
                     if file_name.starts_with('.') {
                         continue;
                     }
-                    
-                    let display_name = if metadata.is_dir() {
-                        format!("{}/", file_name)
-                    } else {
-                        file_name.clone()
-                    };
-                    
-                    html.push_str(&format!("<li><a href='{}'>{}</a></li>", file_name, display_name));
+                    entries.push((file_name, metadata));
                 }
             }
         }
         
+        // Sort entries: directories first, then files, both alphabetically
+        entries.sort_by(|a, b| {
+            match (a.1.is_dir(), b.1.is_dir()) {
+                (true, false) => std::cmp::Ordering::Less,  // directories first
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.0.cmp(&b.0)  // alphabetical within each group
+            }
+        });
+        
+        // Generate listing
+        for (file_name, metadata) in entries {
+            let display_name = if metadata.is_dir() {
+                format!("{}/", file_name)
+            } else {
+                file_name.clone()
+            };
+            
+            let size = if metadata.is_dir() {
+                "-".to_string()
+            } else {
+                metadata.len().to_string()
+            };
+            
+            // Format similar to Apache/nginx directory listing
+            html.push_str(&format!(
+                "<a href='{}'>{}</a>{} {}\n",
+                file_name,
+                display_name,
+                " ".repeat(50_usize.saturating_sub(display_name.len())),
+                size
+            ));
+        }
+        
         // Close HTML
-        html.push_str("</ul></body></html>");
+        html.push_str("</pre><hr></body></html>");
         
         let mut response = HttpResponse::ok();
         response.set_body(html.as_bytes());
