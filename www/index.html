@@ -20,23 +20,14 @@
                 <h3>🌐 Basic HTTP Methods</h3>
                 <p>Test GET, POST, DELETE methods with proper status codes.</p>
                 <a href="/" class="test-link"><span class="method-tag">GET</span>Homepage</a>
-                <a href="/api" class="test-link"><span class="method-tag">GET</span>API Route</a>
                 <div class="curl-example">curl -X POST -d "test" http://localhost:8080/api</div>
                 <div class="curl-example">curl -X DELETE http://localhost:8080/api</div>
-            </div>
-
-            <div class="feature-card">
-                <h3>🔄 Redirections</h3>
-                <p>Test HTTP redirections with proper 301/302 status codes.</p>
-                <a href="/redirect" class="test-link">Test Redirect (301)</a>
-                <div class="curl-example">curl -v http://localhost:8080/redirect</div>
             </div>
 
             <div class="feature-card">
                 <h3>📁 Directory Listing</h3>
                 <p>Test autoindex functionality and directory browsing.</p>
                 <a href="/uploads" class="test-link">Browse Uploads Directory</a>
-                <a href="/cgi-bin" class="test-link">Browse CGI Directory</a>
             </div>
 
             <div class="feature-card">
@@ -54,13 +45,6 @@
                 <p>Test working Python CGI script execution.</p>
                 <a href="/cgi-bin/test.py" class="test-link cgi"><span class="method-tag">GET</span>CGI Test Script</a>
                 <div class="curl-example">curl -X POST -d "name=test" http://localhost:8080/cgi-bin/test.py</div>
-            </div>
-
-            <div class="feature-card">
-                <h3>❌ Failed CGI</h3>
-                <p>Test CGI error handling (script that exits with error).</p>
-                <a href="/cgi-bin/fail.py" class="test-link cgi error">CGI Fail Script</a>
-                <div class="curl-example">curl -v http://localhost:8080/cgi-bin/fail.py</div>
             </div>
 
             <div class="feature-card">
