@@ -186,6 +186,25 @@ impl StaticFileHandler {
             }
         }
 
+        // Handle DELETE method for file deletion
+        if request.method == HttpMethod::DELETE {
+            if let Some(_upload_dir) = &location.upload_store {
+                // Only allow deletion in upload directories for security
+                return self.handle_delete_request(path, &location);
+            } else {
+                // For security, only allow DELETE in specific directories
+                let fs_path = self.resolve_path(path, &location);
+                
+                // Security check: only allow deletion of files in uploads directory
+                if fs_path.to_string_lossy().contains("/uploads/") {
+                    return self.handle_delete_request(path, &location);
+                } else {
+                    // Deny deletion outside uploads directory
+                    return HttpResponse::forbidden();
+                }
+            }
+        }
+
         // Only handle GET and HEAD methods for static files
         if request.method != HttpMethod::GET && request.method != HttpMethod::HEAD {
             let error_page = server_config.error_pages.get(&405).map(|s| s.as_str());
@@ -486,5 +505,44 @@ impl StaticFileHandler {
         // Simple timestamp - for a production server, use a proper date formatting library
         let secs = duration.as_secs();
         format!("{}", secs)
+    }
+
+    fn handle_delete_request(&self, path: &str, location: &RouteConfig) -> HttpResponse {
+        let fs_path = self.resolve_path(path, location);
+        
+        // Security check: Prevent directory traversal
+        if !fs_path.starts_with(&self.server_root) {
+            return HttpResponse::forbidden();
+        }
+        
+        // Check if file exists
+        match std::fs::metadata(&fs_path) {
+            Ok(metadata) => {
+                if metadata.is_file() {
+                    // Attempt to delete the file
+                    match std::fs::remove_file(&fs_path) {
+                        Ok(_) => {
+                            let mut response = HttpResponse::ok();
+                            let html = format!(
+                                "<html><body><h1>File Deleted</h1><p>Successfully deleted: {}</p><a href='/'>Go Home</a></body></html>",
+                                path
+                            );
+                            response.set_body(html.as_bytes());
+                            response.set_header("Content-Type", "text/html");
+                            response
+                        }
+                        Err(_) => {
+                            HttpResponse::forbidden() // Could not delete (permissions, etc.)
+                        }
+                    }
+                } else {
+                    // Cannot delete directories
+                    HttpResponse::forbidden()
+                }
+            }
+            Err(_) => {
+                HttpResponse::not_found() // File doesn't exist
+            }
+        }
     }
 }

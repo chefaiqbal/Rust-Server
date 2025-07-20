@@ -304,11 +304,6 @@ impl WebServer {
             let header_part = &buffer[..pos];
             if let Ok(header_str) = std::str::from_utf8(header_part) {
                 if let Some(content_length) = Self::extract_content_length(header_str) {
-                    // If Content-Length is too large, consider the request complete
-                    // so we can process it and return 413 immediately
-                    if content_length > 1048576 { // 1MB limit
-                        return true;
-                    }
                     let body_start = pos + 4; // Skip \r\n\r\n
                     let body_received = buffer.len() - body_start;
                     return body_received >= content_length;
@@ -350,38 +345,6 @@ impl WebServer {
             client.state = ConnectionState::Processing;
             (request_data, client.server_config_index)
         };
-        
-        // Check for oversized Content-Length BEFORE parsing the full request
-        if let Some(pos) = Self::find_header_end(&request_data) {
-            let header_part = &request_data[..pos];
-            if let Ok(header_str) = std::str::from_utf8(header_part) {
-                if let Some(content_length) = Self::extract_content_length(header_str) {
-                    let server_config = &self.config.servers[server_config_index];
-                    if content_length > server_config.client_max_body_size {
-                        println!("Content-Length {} exceeds limit {}", content_length, server_config.client_max_body_size);
-                        
-                        // Serve custom 413 error page if available
-                        let response = if let Some(error_page_path) = server_config.error_pages.get(&413) {
-                            if let Ok(content) = std::fs::read(error_page_path) {
-                                let mut custom_response = HttpResponse::new(StatusCode::PayloadTooLarge);
-                                custom_response.set_body(&content);
-                                custom_response.set_header("Content-Type", "text/html");
-                                custom_response
-                            } else {
-                                HttpResponse::payload_too_large()
-                            }
-                        } else {
-                            HttpResponse::payload_too_large()
-                        };
-                        
-                        let client = self.clients.get_mut(&fd).ok_or("Client not found")?;
-                        client.response_buffer = response.to_bytes();
-                        client.state = ConnectionState::Writing;
-                        return Ok(());
-                    }
-                }
-            }
-        }
         
         match HttpRequest::parse(&request_data) {
             Ok(request) => {

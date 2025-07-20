@@ -25,6 +25,15 @@
             </div>
 
             <div class="feature-card">
+                <h3>🔒 Method-Based Access Control</h3>
+                <p>Test accepted methods for different routes (DELETE with/without permission).</p>
+                <div class="curl-example">curl -X DELETE http://localhost:8080/ # ✅ DELETE allowed on root</div>
+                <div class="curl-example">curl -X DELETE http://localhost:8080/api # ❌ DELETE forbidden on /api</div>
+                <div class="curl-example">curl -X DELETE http://localhost:8080/uploads # ❌ DELETE forbidden on /uploads</div>
+                <div class="curl-example">curl -X POST http://localhost:8080/uploads # ❌ POST forbidden on /uploads</div>
+            </div>
+
+            <div class="feature-card">
                 <h3>📁 Directory Listing</h3>
                 <p>Test autoindex functionality and directory browsing.</p>
                 <a href="/uploads" class="test-link">Browse Uploads Directory</a>
