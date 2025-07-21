@@ -1,370 +1,160 @@
-# Webserv - HTTP Server Implementation
+A fast, modern HTTP server written in Rust, inspired by Nginx. Supports static files, directory listing, custom error pages, file uploads, CGI (Python), redirects, and method-based access control.
 
-# Create the protected directory and file
-mkdir -p ./www/protected
-echo "This is a secret file that should be protected." > ./www/protected/secret.txt
+## 🚀 Features
 
-# Make the file unreadable (no read permissions for anyone)
-chmod 000 ./www/protected/secret.txt
+- **Static File Serving** 📄
+  - Configurable root directory
+- **Directory Listing** 📁
 
-# Test the 403 Forbidden response
-curl -v http://localhost:8080/protected/secret.txt
 
-## ✅ Features Already Implemented
-- [x] Serve static files (GET)
-- [x] Handle POST (including file uploads via multipart/form-data)
-- [x] Basic DELETE support (if present in your handler)
-- [x] Serve on multiple ports (from your config)
-- [x] Custom config file with server/route settings
-- [x] Serve custom error pages for 404 and 500 (other errors may need checking)
-- [x] Non-blocking, single-process, single-thread (from your design)
-- [x] Root directory and route mapping
-- [x] Directory listing (autoindex)
-- [x] CGI support for at least one language (Python)
-- [x] Limit client body size (configurable)
-- [x] Redirection (via config)
-- [x] Compatible with HTTP/1.1 and browsers
-- [x] Single epoll (or equivalent) call per client/server communication (see Architecture section)
+# localhost - Rust HTTP Server
 
-## ❗ Features/Requirements Remaining or Needing Verification & Enhancement
-1. **Never Crashes / Robust Error Handling**
-    - [x] Add error handling for all edge cases (invalid requests, panics, etc.)
-    - [x] Ensure server never panics or crashes on malformed requests or internal errors
-2. **Request Timeout** ✅
-    - [x] Implement timeout for all requests (e.g., if a request takes too long, close the connection and return 408 or 504)
-    - [x] Configurable timeout duration per server
-    - [x] Proper HTTP status codes (408 Request Timeout and 504 Gateway Timeout)
-    - [x] Clean connection closure on timeout
-3. **Single epoll (or equivalent) Call Per Client/Server Communication** ✅
-    - [x] Only one epoll_wait (or equivalent) call per event loop iteration (see Architecture section)
-4. **All I/O Non-blocking**
-    - [x] Double-check all file, socket, and CGI I/O is non-blocking and handled via epoll (or equivalent)
-5. **Chunked and Unchunked Requests**
-    - [x] Implement and test chunked transfer encoding for both incoming requests and outgoing responses (HTTP/1.1 requirement)
-    - [x] Handle unchunked (Content-Length) requests as well
-6. **Proper HTTP Status Codes**
-    - [x] Make sure every error and success path sets the correct status code (e.g., 405 for method not allowed, 413 for payload too large, etc.)
-7. **Handle Cookies and Sessions**
-    - [x] Implement cookie parsing and setting in responses
-    - [x] Implement basic session management, with a session ID cookie and in-memory map
-8. **Default Error Pages for All Required Codes**
-    - [x] Ensure you have custom error pages for:
-        - 400, 403, 404, 405, 413, 500
-    - [x] Place them in ./www/ and reference them in your config
-9. **CGI: PATH_INFO and Environment**
-    - [x] Make sure CGI scripts receive correct environment variables, especially PATH_INFO
-    - [ ] CGI script should run in the correct working directory
-10. **Configuration File Features**
-    - [ ] All features listed in your requirements should be configurable (host, ports, error pages, client body size, root, methods, redirection, cgi, autoindex, default file, etc.)
-11. **Testing**
-    - [ ] Write and run exhaustive tests:
-        - Static files, uploads, deletes, chunked requests, CGI, redirections, error pages, bad configs, directory listing, etc.
-    - [ ] Use siege or similar to stress test for stability and memory leaks
-12. **Memory Leak Testing**
-    - [ ] Use tools like valgrind or asan to check for memory leaks
-13. **HTTP/1.1 Compliance**
-    - [ ] Ensure persistent connections (keep-alive) work as expected
-    - [ ] Properly parse and respond to all HTTP/1.1 headers
-14. **Documentation**
-    - [ ] Document your config options, endpoints, and any limitations in your README
+A fast, modern HTTP server written in Rust, inspired by Nginx. Supports static files, directory listing, custom error pages, file uploads, CGI (Python), redirects, and method-based access control.
 
-A high-performance HTTP/1.1 server implementation in Rust, inspired by nginx configuration syntax.
+## ✨ Features
 
-## Configuration
+- 🌐 **Serve Static Files**: Fast and secure file serving from configurable directories.
+- 📁 **Directory Listing**: Autoindex for browsing folders.
+- 📤 **File Uploads**: Multipart/form-data upload support.
+- 🐍 **CGI Support**: Run Python scripts for dynamic content.
+- 🔄 **Redirects**: HTTP 301/302 redirection.
+- 🔒 **Method-Based Access Control**: Restrict HTTP methods per route.
+- ⚠️ **Custom Error Pages**: Serve your own 404, 403, 500, etc.
+- 📝 **Configurable**: Nginx-style config file for routes, roots, methods, uploads, CGI, error pages.
 
-### Static File Serving
+## 🛠️ Technology Stack
 
-The server can serve static files with proper MIME type detection. Example configuration:
+<img alt="Rust" src="https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white">
+<img alt="Linux" src="https://img.shields.io/badge/Linux-333333?style=for-the-badge&logo=linux&logoColor=white">
+<img alt="Python" src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white">
+
+## 🏗 Architecture
+
+- **Static Handler:** `static_handler.rs`
+- **CGI Handler:** `cgi`
+- **Config Parser:** `config`
+- **HTTP Core:** `http`
+- **Server Engine:** `server`
+
+## 🚦 Quick Start
+
+### Prerequisites
+- Rust (via [rustup](https://rustup.rs/))
+- Python 3 (for CGI)
+- Linux (recommended)
+
+
+### Installation
+
+```bash
+git clone https://learn.reboot01.com/git/aaljuffa/localhost.git
+cd localhost
+cargo build --release
+cargo run --release
+```
+
+The server will be available at:
+- Main page: http://localhost:8080/
+- API, uploads, CGI, etc. as per your config
+
+## � Configuration Example
+
+See [`config/webserv.conf`](config/webserv.conf):
 
 ```nginx
 server {
     listen 8080;
-    root ./www;  # Base directory for static files
-    
-    # Serve index.html by default
-    location / {
-        allow_methods GET;
-        index index.html;
-        autoindex on;  # Enable directory listing
-    }
-}
-```
-
-### CGI Support
-
-Basic CGI script execution is supported:
-
-```nginx
-location /cgi-bin {
-    allow_methods GET POST;
     root ./www;
-    cgi_extension .py;
-    cgi_pass /usr/bin/python3;  # Absolute path to interpreter is recommended
-}
-```
-
-#### How CGI Works in This Server
-
-The server interprets Python scripts using the Common Gateway Interface (CGI) protocol. It does not interpret the Python code directly; instead, it acts as a middleman that executes the script and passes data between the client and the script.
-
-Here is a step-by-step breakdown of the process:
-
-1.  **Configuration**: In `config/webserv.conf`, a `location` block for `/cgi-bin` is configured with two special directives:
-    *   `cgi_extension .py`: Tells the server to treat any request URI ending in `.py` within this location as a CGI script.
-    *   `cgi_pass /usr/bin/python3`: Specifies the absolute path to the Python interpreter that will be used to execute the script.
-
-2.  **Request Routing**: When a request arrives (e.g., for `/cgi-bin/test.py`), the `WebServer` matches it to the `/cgi-bin` route. The `handle_request_wrapper` function in `src/server/mod.rs` identifies that the request URI matches the `cgi_extension` and routes it to the CGI handler.
-
-3.  **Process Spawning**: Instead of serving the `.py` file, the server spawns a new process. It uses the value from `cgi_pass` as the command and the full path to the script as its argument. For example:
-    ```sh
-    /usr/bin/python3 /path/to/your/project/www/cgi-bin/test.py
-    ```
-
-4.  **Environment & I/O**: The server prepares a set of CGI environment variables (like `REQUEST_METHOD`, `QUERY_STRING`, `CONTENT_LENGTH`, etc.) from the HTTP request. It then communicates with the script's standard I/O channels:
-    *   The HTTP request body is piped to the Python script's **standard input** (`stdin`).
-    *   The server captures the script's **standard output** (`stdout`) to get the response.
-    *   The server also captures **standard error** (`stderr`) to log any errors from the script.
-
-5.  **Response Handling**: The Python script executes and prints its output to `stdout`. This output must be a valid HTTP response (e.g., `Content-Type: text/html\n\n<h1>Hello</h1>`). The Rust server reads this output, parses it into an `HttpResponse`, and sends it back to the client's browser.
-
-### Complete Configuration Example
-
-The server uses nginx-style configuration files:
-
-```nginx
-server {
-    listen 8080;
-    server_name localhost;
-    client_max_body_size 1M;
-    
     error_page 404 /404.html;
-    
-    location / {
-        allow_methods GET POST DELETE;
-        root ./www;
-        index index.html;
-        autoindex on;
-    }
-    
-    location /api {
-        allow_methods GET POST;
-        root ./www;
-    }
-    
-    location /redirect {
-        return 301 http://localhost:8080/;
-    }
-}
+
+## 👥 Authors
+
+- Amir Iqbal - [@chefaiqbal](https://github.com/chefaiqbal)
+- Abdulla Aljuffairi - [xoabdulla](https://learn.reboot01.com/xoabdulla)
+
+Enjoy your fast, secure, and extensible Rust HTTP server! �
+│   ├── static_handler.rs
+│   ├── cgi/
+│   ├── config/
+│   ├── http/
+│   ├── server/
+│   └── utils/
+├── www/
+│   ├── index.html
+│   ├── uploads/
+│   ├── cgi-bin/
+│   └── error pages
+├── Cargo.toml
+└── README.md
 ```
 
-## Cookie and Session Handling
+## ❓ FAQ
 
-The server supports both cookie parsing/setting and minimal session management:
+- **How do I change the port?**
+  - Edit `listen` in `config/webserv.conf`.
+- **How do I add a new route?**
+  - Add a new `location` block in the config.
+- **How do I enable uploads?**
+  - Set `upload_store` in a location block.
+- **How do I run CGI scripts?**
+  - Place Python scripts in `cgi-bin` and set `cgi_pass python`.
+- **How do I see logs?**
+  - Logs are printed to the console. Run with `RUST_LOG=debug cargo run --release` for verbose output.
 
-- **Cookie Parsing:** Incoming requests are parsed for the `Cookie` header; cookies are available in the request handler.
-- **Cookie Setting:** Use the `set_cookie` method in `HttpResponse` to set cookies in responses.
-- **Session Management:**
-    - On each request, the server checks for a `SESSIONID` cookie.
-    - If missing, a new random session ID is generated and stored in a global in-memory session map, and sent as a `Set-Cookie` header.
-    - If present, the session ID is reused.
-    - This demonstrates a minimal session system for educational purposes.
+## 🤝 Contributing
 
-### Testing Cookies and Sessions
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-You can test cookie and session handling with `curl`:
+## 📄 License
 
-```sh
-# See Set-Cookie header from the server
-curl -i http://localhost:8080/
+MIT License - see the LICENSE file for details.
 
-# Use the SESSIONID from above to simulate a returning client
-curl -i --cookie "SESSIONID=YOUR_SESSION_ID" http://localhost:8080/
+## 👥 Authors
+
+- Amir Iqbal - [@chefaiqbal](https://github.com/chefaiqbal)
+
+Enjoy your fast, secure, and extensible Rust HTTP server! 🚀
+- **Memory-safe**: Pure Rust
+
+---
+
+## 🧑‍� Development
+
+- Edit Rust source in [`src/`](src/)
+- Add CGI scripts in [`www/cgi-bin/`](www/cgi-bin/)
+- Add static files in [`www/`](www/)
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+MIT License - see the LICENSE file for details.
+
+---
+
+## 👤 Author
+
+- Amir Iqbal - [@chefaiqbal](https://github.com/chefaiqbal)
+
+---
+
+Enjoy your fast, modern Rust HTTP server! 🚀
 ```
 
-Or use your browser's developer tools to inspect cookies.
-
-## Usage
+Or run the built binary:
 
 ```bash
-# Build the project
-cargo build
-
-# Run with configuration file
-cargo run config/webserv.conf
-
-# Test the server
-curl http://localhost:8080/
-```
-
-## 🛠️ Testing Robust Error Handling
-
-To verify that the server never crashes and always handles errors gracefully, you can send malformed HTTP requests directly to your server using `printf` and `nc` (netcat).
-
-### Example: Send a Malformed HTTP Request
-
-Open a new terminal (while your server is running) and run:
-
-```sh
-printf 'BADMETHOD / HTTP/1.1\r\nHost: localhost\r\n\r\n' | nc localhost 8080
-```
-- Replace `8080` with your server's port if different.
-- You should see a `400 Bad Request` response.
-- The server should **not crash** or exit, and should log an error like `Error parsing request: Invalid HTTP method`.
-
-### Try Other Malformed Requests
-
-- Incomplete request:
-  ```sh
-  printf 'GET /' | nc localhost 8080
-  ```
-- Invalid header bytes:
-  ```sh
-  printf 'GET / HTTP/1.1\r\nHost: localhost\r\nX-Bad: \xff\r\n\r\n' | nc localhost 8080
-  ```
-
-### What to Look For
-- The server keeps running and continues to serve new requests.
-- Errors are logged, but no panics or crashes occur.
-- Clients receive a proper error response (400 or 500), not a dropped or reset connection.
-
-This demonstrates robust error handling and that your server is crash-proof!
-
-## Architecture
-
-- **Event-driven**: Uses Linux epoll for efficient I/O multiplexing
-- **Non-blocking**: All I/O operations are non-blocking
-- **Modular**: Clean separation between HTTP parsing, server logic, and configuration
-- **Memory-safe**: Written in Rust for memory safety and performance
-- **Single epoll_wait per event loop**: The event loop is designed to call epoll_wait (or equivalent) only once per iteration, as required by the project specification. All client/server communication steps (accept, read, write) are handled in response to the events returned by this single call. This ensures compliance with the audit and project requirements for efficient I/O multiplexing.
-
-## Epoll Usage and Event Loop Implementation
-
-The server's event loop is implemented in `src/server/mod.rs` and uses a custom epoll wrapper in `src/utils/epoll.rs`. Only one call to `epoll_wait` is made per event loop iteration, as required by the project specification. All client and server socket I/O (accept, read, write) is handled in response to the events returned by this single call. No blocking I/O is performed outside of epoll events. This design ensures:
-
-- Efficient, scalable handling of many connections in a single thread
-- Compliance with the audit requirement for a single epoll (or equivalent) call per communication step
-- All reads and writes are performed only when epoll signals readiness
-
-**Relevant code locations:**
-- Event loop: [`src/server/mod.rs`](src/server/mod.rs), see `fn event_loop()`
-- Epoll wrapper: [`src/utils/epoll.rs`](src/utils/epoll.rs)
-
-This approach is similar to how high-performance servers like nginx operate, and is required for full marks in the audit.
-
-## Request Timeout Configuration
-
-The server implements configurable request timeouts to handle slow clients and long-running requests. By default, the timeout is set to 30 seconds.
-
-### Configuration
-
-In your server configuration, you can set the `request_timeout_secs` parameter:
-
-```toml
-[server]
-listen = 8080
-server_name = "localhost"
-request_timeout_secs = 30  # Timeout in seconds
-```
-
-### Behavior
-
-- **408 Request Timeout**: Sent when the client takes too long to send the complete request.
-- **504 Gateway Timeout**: Sent when the server takes too long to process a request.
-- The connection is automatically closed after sending the timeout response.
-
-### Testing Timeouts
-
-You can test the timeout behavior using the provided test script:
-
-```bash
-./test_timeout.sh
-```
-
-Or manually with `curl`:
-
-```bash
-# Test request timeout (408)
-curl -v -X POST http://localhost:8080/slow_request -d "data=test" -H "Content-Type: application/x-www-form-urlencoded" -m 10
-```
-
-## Testing
-
-```bash
-# Basic GET request
-curl -v http://localhost:8080/
-
-# POST request
-curl -X POST -d "test data" http://localhost:8080/api
-
-# Test redirect
-curl -v http://localhost:8080/redirect
-```
-
-## Debugging
-
-The server provides detailed debug logging that can be enabled using environment variables:
-
-```bash
-# Enable debug logging for all modules
-RUST_LOG=debug cargo run config/webserv.conf
-
-# Enable debug logging for specific module (e.g., static_handler)
-RUST_LOG=webserv::static_handler=debug cargo run config/webserv.conf
-
-# More verbose logging (trace level)
-RUST_LOG=trace cargo run config/webserv.conf
-```
-
-### Common Debugging Scenarios
-
-#### Static File Serving Issues
-```
-# Check if the file exists at the expected location
-ls -l www/
-
-# Verify file permissions
-ls -la www/
-```
-
-#### CGI Script Issues
-```
-# Check script permissions
-chmod +x cgi-bin/your_script.py
-
-# Test CGI script directly
-./cgi-bin/your_script.py
-
-# Check environment variables
-env | sort
-```
-
-## File Uploads
-
-### Browser Upload Form
-
-If you visit your upload route (e.g. `http://localhost:8080/upload`) in your browser, you will see a file upload form. Select a file and click Upload. After uploading, you will see a confirmation page with a link and preview (for images).
-
-**Sample HTML form served by the server:**
-```html
-<form method="POST" enctype="multipart/form-data" action="/upload">
-    <input type="file" name="file" required />
-    <button type="submit">Upload</button>
-</form>
-```
-
-### Upload with curl
-
-You can also upload files from the command line:
-```sh
-curl -F "file=@yourimage.png" http://localhost:8080/upload
-```
-
-After upload, check the upload directory (as configured by `upload_store`) for your file. The server will respond with an HTML page showing a link and preview if the file is an image.
-
-## Requirements
-
-- Rust 1.70+
-- Linux (uses epoll system calls)
-- Python 3 (for CGI testing)
-
-
