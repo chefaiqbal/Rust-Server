@@ -38,7 +38,7 @@ pub struct RouteConfig {
     pub root: Option<String>,
     pub index: Option<String>,
     pub autoindex: bool,
-    pub redirect: Option<String>,
+    pub redirect: Option<(u16, String)>, // (status code, url)
     pub cgi_pass: Option<String>,
     pub cgi_extension: Option<String>,
     pub upload_store: Option<String>,
@@ -58,9 +58,26 @@ impl RouteConfig {
     }
 }
 
+impl RouteConfig {
+    pub fn new(path: String) -> Self {
+        RouteConfig {
+            path,
+            methods: Vec::new(),
+            root: None,
+            index: None,
+            autoindex: false,
+            redirect: None,
+            cgi_pass: None,
+            cgi_extension: None,
+            upload_store: None,
+            default_file: None,
+        }
+    }
+}
+
 impl Config {
     pub fn from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let content = fs::read_to_string(path)?;
+        let content = std::fs::read_to_string(path)?;
         Self::parse(&content)
     }
 
@@ -72,7 +89,6 @@ impl Config {
 
         for line in content.lines() {
             let line = line.trim();
-            
             // Skip empty lines and comments
             if line.is_empty() || line.starts_with('#') {
                 continue;
@@ -184,28 +200,31 @@ impl Config {
                     .map(|s| s.trim_end_matches(';').to_string())
                     .collect();
                 route.methods = methods;
-            }
+            },
             "root" => {
                 if parts.len() >= 2 {
                     route.root = Some(parts[1].trim_end_matches(';').to_string());
                 }
-            }
+            },
             "index" => {
                 if parts.len() >= 2 {
                     route.index = Some(parts[1].trim_end_matches(';').to_string());
                 }
-            }
+            },
             "autoindex" => {
                 if parts.len() >= 2 {
                     route.autoindex = parts[1].trim_end_matches(';') == "on";
                 }
-            }
+            },
             "return" => {
                 if parts.len() >= 3 {
-                    // Skip the status code, just get the URL
-                    route.redirect = Some(parts[2].trim_end_matches(';').to_string());
+                    // Parse status code and URL
+                    if let Ok(code) = parts[1].parse::<u16>() {
+                        let url = parts[2].trim_end_matches(';').to_string();
+                        route.redirect = Some((code, url));
+                    }
                 }
-            }
+            },
             "cgi_pass" => {
                 if parts.len() >= 2 {
                     route.cgi_pass = Some(parts[1].trim_end_matches(';').to_string());
@@ -215,13 +234,13 @@ impl Config {
                 if parts.len() >= 2 {
                     route.cgi_extension = Some(parts[1].trim_end_matches(';').to_string());
                 }
-            }
+            },
             "upload_store" => {
                 if parts.len() >= 2 {
                     route.upload_store = Some(parts[1].trim_end_matches(';').to_string());
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         Ok(())
@@ -262,19 +281,4 @@ impl Default for ServerConfig {
     }
 }
 
-impl RouteConfig {
-    fn new(path: String) -> Self {
-        Self {
-            path,
-            methods: vec!["GET".to_string()],
-            root: None,
-            index: None,
-            autoindex: false,
-            redirect: None,
-            cgi_pass: None,
-            cgi_extension: None,
-            upload_store: None,
-            default_file: None,
-        }
-    }
-}
+// Removed duplicate RouteConfig::new

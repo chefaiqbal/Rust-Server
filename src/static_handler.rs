@@ -89,8 +89,14 @@ impl StaticFileHandler {
 
         // Find the best matching location block
         let location = self.find_best_location(path, server_config);
-        
+
         debug!("Found location for path '{}': path='{}', methods={:?}", path, location.path, location.methods);
+
+        // Handle redirect if present in location
+        if let Some((code, url)) = &location.redirect {
+            debug!("Redirect for path '{}': code={}, url={}", path, code, url);
+            return crate::http::HttpResponse::redirect_with_code(url, *code);
+        }
 
         // CHECK FOR EMPTY METHODS FIRST - This is the key fix for 403 Forbidden
         if location.methods.is_empty() {

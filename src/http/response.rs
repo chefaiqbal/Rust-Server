@@ -83,10 +83,13 @@ impl HttpResponse {
         response
     }
 
-    pub fn redirect(location: &str) -> Self {
-        let mut response = Self::new(StatusCode::Found);
+    pub fn redirect_with_code(location: &str, code: u16) -> Self {
+        use crate::http::StatusCode;
+        let status = StatusCode::from(code);
+        let mut response = Self::new(status);
         response.set_header("location", location);
-        response.set_body(b"<html><body><h1>302 Found</h1></body></html>");
+        let body = format!("<html><body><h1>{} {}</h1></body></html>", code, status.reason_phrase());
+        response.set_body(body.as_bytes());
         response.set_header("content-type", "text/html");
         response
     }
