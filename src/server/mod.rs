@@ -240,7 +240,7 @@ impl WebServer {
 
     fn handle_client_read(&mut self, fd: RawFd) -> Result<(), Box<dyn std::error::Error>> {
         let client = self.clients.get_mut(&fd).ok_or("Client not found")?;
-        
+
         let mut buffer = [0; 8192];
         match client.stream.read(&mut buffer) {
             Ok(0) => {
@@ -250,11 +250,41 @@ impl WebServer {
             Ok(n) => {
                 client.buffer.extend_from_slice(&buffer[..n]);
                 client.last_activity = Instant::now();
-                
+
+                // --- Content-Length vs client_max_body_size check (immediate 413) ---
+                // Only check if we have headers
+                if let Some(pos) = Self::find_header_end(&client.buffer) {
+                    let header_part = &client.buffer[..pos];
+                    if let Ok(header_str) = std::str::from_utf8(header_part) {
+                        if let Some(content_length) = Self::extract_content_length(header_str) {
+                            let server_config_index = client.server_config_index;
+                            let server_config = &self.config.servers[server_config_index];
+                            if content_length > server_config.client_max_body_size {
+                                // Prepare 413 response (custom page if configured)
+                                let mut response = if let Some(error_page_path) = server_config.error_pages.get(&413) {
+                                    if let Ok(content) = std::fs::read(error_page_path) {
+                                        let mut resp = HttpResponse::new(StatusCode::PayloadTooLarge);
+                                        resp.set_body(&content);
+                                        resp.set_header("Content-Type", "text/html");
+                                        resp
+                                    } else {
+                                        HttpResponse::payload_too_large()
+                                    }
+                                } else {
+                                    HttpResponse::payload_too_large()
+                                };
+                                client.response_buffer = response.to_bytes();
+                                client.state = ConnectionState::Writing;
+                                return Ok(()); // Don't process further, don't wait for body
+                            }
+                        }
+                    }
+                }
+
                 // Check if we have a complete request
                 let buffer_copy = client.buffer.clone();
                 let is_complete = Self::is_complete_request(&buffer_copy);
-                
+
                 if is_complete {
                     self.process_request(fd)?;
                 }
@@ -266,7 +296,7 @@ impl WebServer {
                 return Err(e.into());
             }
         }
-        
+
         Ok(())
     }
 

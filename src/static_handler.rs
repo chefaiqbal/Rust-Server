@@ -52,7 +52,31 @@ impl StaticFileHandler {
     ///   - /chunked-demo returns a chunked response
     ///   - /normal-demo returns a Content-Length response
     pub fn handle_request(&self, request: &crate::http::HttpRequest, server_config: &crate::config::ServerConfig) -> crate::http::HttpResponse {
+
         use crate::http::HttpMethod;
+
+        // --- Body size check: reject too-large requests with 413 ---
+        if let Some(content_length) = request.content_length() {
+            if content_length > server_config.client_max_body_size {
+                // Try to serve custom 413 error page if configured
+                if let Some(error_page_path) = server_config.error_pages.get(&413) {
+                    let error_path = if error_page_path.starts_with('/') {
+                        error_page_path.trim_start_matches('/').to_string()
+                    } else {
+                        error_page_path.clone()
+                    };
+                    let full_path = self.server_root.join(&error_path);
+                    if let Ok(content) = std::fs::read(&full_path) {
+                        let mut response = HttpResponse::new(crate::http::StatusCode::PayloadTooLarge);
+                        response.set_body(&content);
+                        response.set_header("Content-Type", "text/html");
+                        return response;
+                    }
+                }
+                // Fallback to default 413
+                return HttpResponse::payload_too_large();
+            }
+        }
 
         // Get the path from the URI, handling query parameters
         let path = match request.uri.split('?').next() {
