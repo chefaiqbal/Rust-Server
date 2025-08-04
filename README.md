@@ -101,16 +101,6 @@ Enjoy your fast, secure, and extensible Rust HTTP server! �
 - **How do I see logs?**
   - Logs are printed to the console. Run with `RUST_LOG=debug cargo run --release` for verbose output.
 
-
-
-
-## 👥 Authors
-
-- Amir Iqbal - [@chefaiqbal](https://github.com/chefaiqbal)
-
-Enjoy your fast, secure, and extensible Rust HTTP server! 🚀
-- **Memory-safe**: Pure Rust
-
 ---
 
 ## 🧑‍� Development
