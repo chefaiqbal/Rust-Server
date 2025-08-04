@@ -101,17 +101,8 @@ Enjoy your fast, secure, and extensible Rust HTTP server! �
 - **How do I see logs?**
   - Logs are printed to the console. Run with `RUST_LOG=debug cargo run --release` for verbose output.
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
-## 📄 License
-
-MIT License - see the LICENSE file for details.
 
 ## 👥 Authors
 
@@ -128,33 +119,13 @@ Enjoy your fast, secure, and extensible Rust HTTP server! 🚀
 - Add CGI scripts in [`www/cgi-bin/`](www/cgi-bin/)
 - Add static files in [`www/`](www/)
 
----
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-MIT License - see the LICENSE file for details.
-
----
 
 ## 👤 Author
 
 - Amir Iqbal - [@chefaiqbal](https://github.com/chefaiqbal)
+- Abdulla Aljuffairi  - [@xoabdulla ](https://github.com/xoabdulla)
 
 ---
 
 Enjoy your fast, modern Rust HTTP server! 🚀
-```
-
-Or run the built binary:
-
-```bash
